@@ -22,9 +22,9 @@ var (
 	CheckpointDir = "checkpoints"
 
 	Images = map[string]string{
-		"golua":   "hymatrix/docker-golua:latest",
-		"ollama":  "hymatrix/docker-ollama:latest",
-		"default": "hymatrix/docker-golua:latest",
+		"golua":   "chriswebber/docker-golua:latest",
+		"ollama":  "chriswebber/docker-ollama:latest",
+		"default": "chriswebber/docker-golua:latest",
 	}
 
 	// use mount to share models
