@@ -20,7 +20,7 @@ func transfer(from *sdk.SDK, token, to string, amt *big.Int) error {
 
 func stake(from *sdk.SDK, amt *big.Int) {
 	info, _ := from.Client.Info()
-	from.SendMessage(info.Hm, "",
+	from.SendMessage(info.Token, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "Stake"},
 			{Name: "Quantity", Value: amt.String()},
