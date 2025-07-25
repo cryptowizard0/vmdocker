@@ -17,6 +17,9 @@ var (
 	bundler, _ = goar.NewBundler(signer)
 	s          = sdk.NewFromBundler(url, bundler)
 	s2         = sdk.New(url, "./test_keyfile2.json")
+
+	module    = "pQUiSWVtGTIP8isNyGMlYLpknEnpFA2SWtiTDNAecIo"
+	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
 )
 
 func main() {
@@ -34,15 +37,13 @@ func main() {
 	case "sendMessage":
 		sendMessage()
 	case "module":
-		module()
+		genModule()
 	case "spawn":
 		spawn()
 	case "spawnChild":
 		spawnChild()
 	case "eval":
 		eval()
-	case "eval2":
-		eval2()
 	case "receive":
 		receive()
 	case "receive2":
