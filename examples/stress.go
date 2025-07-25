@@ -25,7 +25,7 @@ func doTansfer() {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < sendCount; j++ {
-				err := transfer(s, info.Hm, "UB0yJx53xBo_rFA4CvKP-WKO25M7kIGrqm2caarghkc", big.NewInt(1))
+				err := transfer(s, info.Token, "UB0yJx53xBo_rFA4CvKP-WKO25M7kIGrqm2caarghkc", big.NewInt(1))
 				if err == nil {
 					atomic.AddInt32(&successCount, 1)
 				} else {

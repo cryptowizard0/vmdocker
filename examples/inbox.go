@@ -11,12 +11,10 @@ import (
 )
 
 func inbox() {
-	// s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
-
 	// spawn target1
 	res, err := s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -28,8 +26,8 @@ func inbox() {
 
 	// spawn target2
 	res, err = s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {

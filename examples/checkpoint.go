@@ -8,11 +8,9 @@ import (
 )
 
 func checkpoint_1() {
-	// s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
-
 	res, err := s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -32,7 +30,6 @@ func checkpoint_1() {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target},
-			{Name: "Module", Value: "0x84534"},
 			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: code},
 		})
@@ -44,14 +41,11 @@ func checkpoint_1() {
 }
 
 func checkpoint_2(pid string) {
-	// s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
-
 	target := pid
 
 	code := `
 		print(Name)
 	`
-
 	res, err := s.SendMessageAndWait(target, code,
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},

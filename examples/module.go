@@ -8,7 +8,7 @@ import (
 	"github.com/hymatrix/hymx/schema"
 )
 
-func module() {
+func genModule() {
 	item, _ := s.GenerateModule([]byte{}, schema.Module{
 		Base:         schema.DefaultBaseModule,
 		ModuleFormat: "golua",
@@ -17,4 +17,5 @@ func module() {
 
 	filename := fmt.Sprintf("mod-%s.json", item.Id)
 	os.WriteFile(filename, bin, 0644)
+
 }
