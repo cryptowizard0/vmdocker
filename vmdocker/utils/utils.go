@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"errors"
+
+	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
 	hySchema "github.com/hymatrix/hymx/schema"
 	"github.com/hymatrix/hymx/utils"
 	goarSchema "github.com/permadao/goar/schema"
@@ -45,4 +48,25 @@ func BuildProcessTags(process hySchema.Process, nodeAddr string, tags []goarSche
 	}
 	process.Tags = processTags
 	return process, nil
+}
+
+// CheckModuleFormat validates that the module format:
+// - starts with "web.vmdocker-" prefix
+// - contains Image-Name and Image-ID tags
+func CheckModuleFormat(moduleFormat string, tags []goarSchema.Tag) error {
+	if moduleFormat != schema.ModuleFormat {
+		return errors.New("module format is not " + schema.ModuleFormat)
+	}
+
+	imageName := utils.GetTagsValueByDefault("Image-Name", tags, "")
+	if imageName == "" {
+		return errors.New("Image-Name is empty")
+	}
+
+	imageID := utils.GetTagsValueByDefault("Image-ID", tags, "")
+	if imageID == "" {
+		return errors.New("Image-ID is empty")
+	}
+
+	return nil
 }

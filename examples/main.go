@@ -18,7 +18,7 @@ var (
 	s          = sdk.NewFromBundler(url, bundler)
 	s2         = sdk.New(url, "./test_keyfile2.json")
 
-	module    = "pQUiSWVtGTIP8isNyGMlYLpknEnpFA2SWtiTDNAecIo"
+	module    = "GjkXoqJuVmrmgwfekxP5ykrlmfSV3ESgh4rb0E-jZfE"
 	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
 )
 

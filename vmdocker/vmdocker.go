@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
 	"github.com/hymatrix/hymx/common"
 	hymxUtils "github.com/hymatrix/hymx/utils"
 	vmmSchema "github.com/hymatrix/hymx/vmm/schema"
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
-	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
 	goarSchema "github.com/permadao/goar/schema"
 )
 
@@ -100,9 +100,17 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 		log.Error("get docker manager failed", "err", err)
 		return err
 	}
-	moduleFormat := hymxUtils.GetTagsValueByDefault("Module-Format", v.Env.Module.Tags, schema.ModuleFormatGolua)
+
+	err = utils.CheckModuleFormat(v.Env.Module.ModuleFormat, v.Env.Module.Tags)
+	if err != nil {
+		return err
+	}
+	imageInfo := schema.ImageInfo{
+		Name: hymxUtils.GetTagsValueByDefault("Image-Name", v.Env.Module.Tags, ""),
+		SHA:  hymxUtils.GetTagsValueByDefault("Image-ID", v.Env.Module.Tags, ""),
+	}
 	// start docker container
-	containerInfo, err := dm.CreateContainer(ctx, v.pid, moduleFormat)
+	containerInfo, err := dm.CreateContainer(ctx, v.pid, imageInfo)
 	if err != nil {
 		return err
 	}

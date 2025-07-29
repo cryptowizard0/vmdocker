@@ -5,6 +5,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/cryptowizard0/vmdocker/vmdocker"
+	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
 	"github.com/everFinance/goether"
 	"github.com/gin-gonic/gin"
 	"github.com/hymatrix/hymx/common"
@@ -12,8 +14,6 @@ import (
 	"github.com/hymatrix/hymx/schema"
 	"github.com/hymatrix/hymx/server"
 	registrySchema "github.com/hymatrix/hymx/vmm/core/registry/schema"
-	"github.com/cryptowizard0/vmdocker/vmdocker"
-	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
 	"github.com/inconshreveable/log15"
 	"github.com/permadao/goar"
 	"github.com/spf13/viper"
@@ -103,7 +103,7 @@ func run(c *cli.Context) (err error) {
 	s := server.New(bundler, redisURL, arweaveURL, hymxURL, nodeInfo)
 
 	// mount vmdocker
-	s.Mount(vmdockerSchema.ModuleFormatGolua, vmdocker.SpawnVmDocker)
+	s.Mount(vmdockerSchema.ModuleFormat, vmdocker.SpawnVmDocker)
 
 	s.Run(port)
 
