@@ -409,7 +409,7 @@ Participating nodes earn rewards for:
 
 ### Run AOS Client
 
-vmdocker is an AO-compatible. 使用修改过的 AOS 链接到 vmdocker.
+vmdocker is an AO-compatible system. Use the modified AOS to connect to vmdocker.
 
 1. Clone AOS repository:
    ```bash
