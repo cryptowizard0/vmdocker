@@ -34,13 +34,14 @@ func SpawnVmDocker(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 }
 
 type VmDocker struct {
-	//  info
 	pid string
 	Env vmmSchema.Env
 	// container info
 	containerInfo *schema.ContainerInfo
 	// http client
 	client *http.Client
+	// close channel to signal container shutdown
+	closeChan chan struct{}
 }
 
 // todo: add cpu, mem
@@ -60,6 +61,7 @@ func New(env vmmSchema.Env, nodeAddr string, tags []goarSchema.Tag) (*VmDocker, 
 			},
 			Timeout: 10 * 60 * time.Second,
 		},
+		closeChan: make(chan struct{}),
 	}
 	return v, nil
 }
@@ -74,6 +76,7 @@ func NewFromCheckpoint(env vmmSchema.Env, checkpointName string, tags []goarSche
 			},
 			Timeout: 60 * time.Second,
 		},
+		closeChan: make(chan struct{}),
 	}
 
 	err := v.initProcessFromCheckpoint(checkpointName)
@@ -122,7 +125,11 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Second) // Wait for container to fully start
+	// Wait for container to be ready with health check
+	err = v.waitForContainerReady(ctx, 60*time.Second)
+	if err != nil {
+		return fmt.Errorf("container not ready: %v", err)
+	}
 
 	// create ao process
 	return v.spawn(schema.SpawnRequest{
@@ -141,6 +148,55 @@ func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) (*vmmSchema.Result, e
 		Meta:   meta,
 		Params: meta.Params,
 	})
+}
+
+// waitForContainerReady waits for the container to be ready by checking health endpoint
+func (v *VmDocker) waitForContainerReady(ctx context.Context, timeout time.Duration) error {
+	if v.containerInfo == nil {
+		return fmt.Errorf("containerInfo is nil")
+	}
+
+	startTime := time.Now()
+	log.Debug("waiting for container to be ready", "pid", v.pid, "port", v.containerInfo.Port)
+
+	url := fmt.Sprintf("http://%s:%d/vmm/health", schema.AllowHost, v.containerInfo.Port)
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			elapsedTime := time.Since(startTime)
+			log.Debug("container health check timeout", "pid", v.pid, "elapsed_time", elapsedTime)
+			return fmt.Errorf("timeout waiting for container to be ready")
+		case <-v.closeChan:
+			elapsedTime := time.Since(startTime)
+			log.Debug("container closed during health check", "pid", v.pid, "elapsed_time", elapsedTime)
+			return fmt.Errorf("container was closed")
+		case <-ticker.C:
+			req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+			if err != nil {
+				continue
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				continue
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				elapsedTime := time.Since(startTime)
+				log.Debug("container ready", "pid", v.pid, "elapsed_time", elapsedTime)
+				return nil
+			}
+		}
+	}
 }
 
 func (v *VmDocker) spawn(msg schema.SpawnRequest) error {
@@ -287,6 +343,13 @@ func (v *VmDocker) Restore(snapshot string) error {
 }
 
 func (v *VmDocker) Close() error {
+	// Signal waitForContainerReady to exit immediately
+	select {
+	case v.closeChan <- struct{}{}:
+	default:
+		// Channel might be full or closed, ignore
+	}
+
 	dm, err := GetDockerManager()
 	if err != nil {
 		log.Error("get docker manager failed", "err", err)
