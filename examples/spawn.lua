@@ -9,7 +9,7 @@ Handlers.add('new', Handlers.utils.hasMatchingTag('Action', 'New'), function(msg
             { name = "Scheduler", value = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51" },
         }
     }
-    local ret = ao.spawn("GjkXoqJuVmrmgwfekxP5ykrlmfSV3ESgh4rb0E-jZfE", spawnMessage).receive()
+    local ret = ao.spawn("qvsXuWo0sLardhzyNJI-9JGbWOFYqQz7PZfUD2JlgvU", spawnMessage).receive()
     local process_id = ret.Tags['Process']
     print("Spawned process: ".. process_id)
 end)
