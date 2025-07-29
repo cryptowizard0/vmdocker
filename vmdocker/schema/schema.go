@@ -10,9 +10,16 @@ import (
 )
 
 const (
-	ModuleFormatGolua  = "golua"
-	ModuleFormatOLlama = "ollama"
+	ModuleFormat = "web.vmdocker-golua-ao.v0.0.1"
+	// example: web.vmdocker-golua-ao.v0.0.1
+	// example: web.vmdocker-ollama.v0.0.1
 )
+
+// ImageInfo contains image name and verification information
+type ImageInfo struct {
+	Name string // Docker image name
+	SHA  string // Image SHA256 digest for verification
+}
 
 var (
 	DockerVersion = "1.47"
@@ -21,10 +28,20 @@ var (
 	MaxMem        = 12 * 1024 * 1024 * 1024 // max 12GB memory
 	CheckpointDir = "checkpoints"
 
-	Images = map[string]string{
-		"golua":   "chriswebber/docker-golua:latest",
-		"ollama":  "chriswebber/docker-ollama:latest",
-		"default": "chriswebber/docker-golua:latest",
+	// Images contains image configurations with verification info
+	Images = map[string]ImageInfo{
+		"golua": {
+			Name: "chriswebber/docker-golua:v0.0.2",
+			SHA:  "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b", // TODO: Replace with actual SHA
+		},
+		"ollama": {
+			Name: "chriswebber/docker-ollama:latest",
+			SHA:  "sha256:def456abc123...", // TODO: Replace with actual SHA
+		},
+		"default": {
+			Name: "chriswebber/docker-golua:v0.0.2",
+			SHA:  "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b", // TODO: Replace with actual SHA
+		},
 	}
 
 	// use mount to share models
@@ -44,7 +61,7 @@ type ContainerInfo struct {
 // IDockerManager defines the interface for docker operations
 type IDockerManager interface {
 	// CreateContainer creates a new container with the given process id
-	CreateContainer(ctx context.Context, pid, moduleFormat string) (*ContainerInfo, error)
+	CreateContainer(ctx context.Context, pid string, imageInfo ImageInfo) (*ContainerInfo, error)
 
 	// GetContainer returns container info by process id
 	GetContainer(pid string) (*ContainerInfo, error)

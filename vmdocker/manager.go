@@ -3,6 +3,7 @@ package vmdocker
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,13 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
 	"github.com/docker/docker/api/types/checkpoint"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
-	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
 )
 
 const (
@@ -37,11 +39,72 @@ type DockerManager struct {
 	portAllocator *PortAllocator
 }
 
-func getImageByRuntime(moduleFormat string) string {
+func getImageByRuntime(moduleFormat string) schema.ImageInfo {
 	if image, exists := schema.Images[moduleFormat]; exists {
 		return image
 	}
 	return schema.Images["default"]
+}
+
+// ensureImageExists checks if image exists locally, pulls it if not, and verifies SHA
+func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema.ImageInfo) error {
+	// Check if image exists locally
+	_, err := dm.cli.ImageInspect(ctx, imageInfo.Name)
+	if err == nil {
+		// Image exists, verify SHA if provided
+		if imageInfo.SHA != "" {
+			return dm.verifyImageSHA(ctx, imageInfo)
+		}
+		return nil
+	}
+
+	// Image doesn't exist, pull it
+	log.Info("pulling image", "image", imageInfo.Name)
+	reader, err := dm.cli.ImagePull(ctx, imageInfo.Name, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to pull image %s: %v", imageInfo.Name, err)
+	}
+	defer reader.Close()
+
+	// Read pull output to ensure completion
+	_, err = io.Copy(io.Discard, reader)
+	if err != nil {
+		return fmt.Errorf("failed to read pull output: %v", err)
+	}
+
+	log.Info("image pulled successfully", "image", imageInfo.Name)
+
+	// Verify SHA if provided
+	if imageInfo.SHA != "" {
+		return dm.verifyImageSHA(ctx, imageInfo)
+	}
+
+	return nil
+}
+
+// verifyImageSHA verifies the SHA256 digest of the pulled image
+func (dm *DockerManager) verifyImageSHA(ctx context.Context, imageInfo schema.ImageInfo) error {
+	inspect, err := dm.cli.ImageInspect(ctx, imageInfo.Name)
+	if err != nil {
+		return fmt.Errorf("failed to inspect image %s: %v", imageInfo.Name, err)
+	}
+
+	// Check RepoDigests for SHA verification
+	for _, digest := range inspect.RepoDigests {
+		if strings.Contains(digest, imageInfo.SHA) {
+			log.Info("image SHA verified", "image", imageInfo.Name, "sha", imageInfo.SHA)
+			return nil
+		}
+	}
+
+	// If RepoDigests don't match, check image ID
+	if inspect.ID == imageInfo.SHA {
+		log.Info("image ID verified", "image", imageInfo.Name, "id", imageInfo.SHA)
+		return nil
+	}
+
+	return fmt.Errorf("image SHA verification failed for %s: expected %s, got digests %v and ID %s",
+		imageInfo.Name, imageInfo.SHA, inspect.RepoDigests, inspect.ID)
 }
 
 func newDockerManager() (*DockerManager, error) {
@@ -74,10 +137,16 @@ func GetDockerManager() (schema.IDockerManager, error) {
 	return instance, nil
 }
 
-func (dm *DockerManager) CreateContainer(ctx context.Context, pid, moduleFormat string) (*schema.ContainerInfo, error) {
+func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageInfo schema.ImageInfo) (*schema.ContainerInfo, error) {
 	log.Debug("create container", "pid", pid)
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
+
+	// Ensure image exists locally, pull if necessary
+	if err := dm.ensureImageExists(ctx, imageInfo); err != nil {
+		log.Error("failed to ensure image exists", "image", imageInfo.Name, "err", err)
+		return nil, fmt.Errorf("failed to ensure image exists: %v", err)
+	}
 
 	// Allocate port
 	port, err := dm.portAllocator.Allocate()
@@ -114,7 +183,7 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid, moduleFormat 
 		}
 	}
 	config := &container.Config{
-		Image: getImageByRuntime(moduleFormat),
+		Image: imageInfo.Name,
 		ExposedPorts: nat.PortSet{
 			nat.Port(schema.ExprotPort): struct{}{},
 		},

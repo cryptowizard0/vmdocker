@@ -13,7 +13,7 @@
 
 ## 📖 Overview
 
-**VMDocker** is a high-performance, Docker-based virtual machine implementation designed for the `HyMatrix` computing network. It serves as a universal virtual machine extension that can be seamlessly `mounted` to HyMatrix nodes, enabling scalable and verifiable computation execution.
+**VMDocker** is a high-performance, Docker-based virtual machine implementation designed for the HyMatrix computing network. It serves as a universal virtual machine extension that can be seamlessly mounted to HyMatrix nodes, enabling scalable and verifiable computation execution.
 
 ### 🌟 Key Features
 
@@ -28,8 +28,8 @@
 
 ```
 ┌─────────┐    ┌──────────┐    ┌───────────┐
-│ HyMatrix│───▶│ VMDocker │───▶│ Container │
-│  Node   │    │          │    │(EVM/WASM) │
+│ HyMatrix│───▶│VMDocker  │───▶│Container  │
+│  Node   │    │ Manager  │    │(EVM/WASM) │
 └─────────┘    └──────────┘    └───────────┘
 ```
 
@@ -37,9 +37,7 @@
 
 **HyMatrix** is an infinitely scalable decentralized computing network that decouples computation from consensus by anchoring execution logs in immutable storage (Arweave), enabling verifiable, trustless computation anywhere.
 
-**Learn more**: 
-> - 🌐 [HyMatrix Website](https://hymatrix.com/)
-> - 📖 [HyMatrix Documentation](https://docs.hymatrix.com/)
+🌐 **Learn more**: [https://hymatrix.com/](https://hymatrix.com/)
 
 ### 🛠️ VM Interface
 
@@ -79,7 +77,26 @@ type Vm interface {
 
 ### 📦 Installation
 
-#### 1. Install System Dependencies
+#### 1. Clone Repository
+
+```bash
+git clone https://github.com/cryptowizard0/vmdocker.git
+cd vmdocker
+```
+
+#### 2. Install Dependencies
+
+```bash
+go mod tidy
+```
+
+#### 3. Build VMDocker
+
+```bash
+go build -o ./build/hymx-node ./cmd
+```
+
+#### 4. Install System Dependencies
 
 **Ubuntu/Debian:**
 ```bash
@@ -91,26 +108,6 @@ sudo apt-get install gcc build-essential redis-server
 ```bash
 sudo yum install gcc gcc-c++ make redis
 ```
-
-#### 2. Clone Repository
-
-```bash
-git clone https://github.com/cryptowizard0/vmdocker.git
-cd vmdocker
-```
-
-#### 3. Install Dependencies
-
-```bash
-go mod tidy
-```
-
-#### 4. Build VMDocker
-
-```bash
-go build -o ./build/hymx-node ./cmd
-```
-
 
 ### 🔧 Optional: CRIU Installation (Linux Only)
 
@@ -165,8 +162,6 @@ docker info | grep "Experimental"
 
 ### 📝 Create Configuration File
 
-> 📚 **For detailed configuration options**, see [HyMatrix Configuration Documentation](https://docs.hymatrix.com/docs/join-the-network/setup)
-
 VMDocker uses standard HyMatrix configuration format. Create a `config.yaml` file:
 
 ```yaml
@@ -210,7 +205,105 @@ joinNetwork: false  # Set to true for production network
 | `nodeURL` | string | Public node URL | `https://my-node.com` |
 | `joinNetwork` | boolean | Join HyMatrix network | `false` (testing), `true` (production) |
 
+> 📚 **For detailed configuration options**, see [HyMatrix Configuration Documentation](https://docs.hymatrix.com/docs/join-the-network/setup)
 
+## 📋 Module Configuration
+
+### 🏷️ Module Format Requirements
+
+VMDocker modules must follow specific format requirements to ensure proper container execution:
+
+#### **ModuleFormat Specification**
+- **Required Prefix**: `web.vmdocker-`
+- **Format Pattern**: `web.vmdocker-{runtime}-{version}`
+- **Examples**:
+  - `web.vmdocker-golua-ao.v0.0.1`
+  - `web.vmdocker-wasm-ao.v1.0.0`
+  - `web.vmdocker-evm-ao.v2.1.0`
+
+#### **Required Tags**
+
+Every VMDocker module **MUST** include the following tags:
+
+| Tag Name | Description | Example |
+|----------|-------------|----------|
+| `Image-Name` | Docker image name and tag | `chriswebber/docker-golua:v0.0.2` |
+| `Image-ID` | Docker image SHA256 digest | `sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b` |
+
+> ⚠️ **Important**: Both `Image-Name` and `Image-ID` tags are mandatory. Missing either tag will cause module validation to fail.
+
+#### **Create Your Own Module**
+
+Follow these steps to create and deploy your custom VMDocker module:
+
+**Step 1: Modify Module Configuration**
+
+Edit the `examples/module.go` file and fill in your module information:
+
+```go
+// examples/module.go
+item, _ := s.GenerateModule([]byte{}, schema.Module{
+    Base:         schema.DefaultBaseModule,
+    ModuleFormat: "web.vmdocker-golua-ao.v0.0.1",  // Must start with "web.vmdocker-"
+    Tags: []arSchema.Tag{
+			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.2"},
+			{Name: "Image-ID", Value: "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b"},
+		},
+})
+```
+
+**Step 2: Generate Module File**
+
+Run the command in the `examples` directory to generate the module configuration file:
+
+```bash
+cd examples
+go run ./ module
+```
+
+This will generate a `mod-xxxx.json` file containing your module configuration.
+
+**Step 3: Deploy Module**
+
+Copy the generated module file to the VMDocker modules directory:
+
+```bash
+# Copy the generated module file to cmd/mod/ directory
+cp mod-*.json ../cmd/mod/
+```
+
+**Step 4: Verify Deployment**
+
+Check if the module file is correctly deployed:
+
+```bash
+ls ../cmd/mod/mod-*.json
+```
+
+Now your custom module is ready to use in VMDocker!
+
+#### **Validation Process**
+
+VMDocker automatically validates modules using the `checkModule` function:
+
+1. ✅ **ModuleFormat Check**: Verifies format starts with `web.vmdocker-`
+2. ✅ **Image-Name Check**: Ensures `Image-Name` tag exists and is not empty
+3. ✅ **Image-ID Check**: Ensures `Image-ID` tag exists and is not empty
+
+If any validation fails, the module will be rejected and container creation will fail.
+
+#### **Getting Image SHA256**
+
+To obtain the correct `Image-ID` value:
+
+```bash
+# Pull the image
+docker pull chriswebber/docker-golua:v0.0.2
+
+# Get the SHA256 digest
+docker inspect chriswebber/docker-golua:v0.0.2 --format='{{.Id}}'
+# Output: sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b
+```
 
 ## 🔧 Module Setup
 
@@ -312,145 +405,43 @@ Participating nodes earn rewards for:
 
 > 📖 **For detailed network joining instructions**, see [HyMatrix Network Documentation](https://docs.hymatrix.com/docs/category/join-the-network)
 
-## 💻 Usage
+## 使用
 
-### 🔗 AOS Client Integration
+### Run AOS Client
 
-VMDocker is fully AO-compatible and can be used with the modified AOS client.
+vmdocker is an AO-compatible. 使用修改过的 AOS 链接到 vmdocker.
 
-#### 1. 📥 Setup AOS Client
+1. Clone AOS repository:
+   ```bash
+   git clone https://github.com/cryptowizard0/aos
+   ```
 
-```bash
-# Clone the modified AOS repository
-git clone https://github.com/cryptowizard0/aos
-cd aos
+2. Install Node.js dependencies:
+   ```bash
+   npm install
+   ```
 
-# Install Node.js dependencies
-npm install
-```
+3. Start AOS client:
+    - `cu-url` and `mu-url` should be the same as the vmdocker node url
+    - `scheduler` is the vmdocker node id
+   ```bash
+   DEBUG=true node src/index.js \
+    --cu-url=http://127.0.0.1:8080 \
+    --mu-url=http://127.0.0.1:8080 \
+    --scheduler=0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51 \
+    test_name
+   ``` 
 
-#### 2. 🚀 Launch AOS Client
+   After the first launch, please record your Process ID. To reconnect to the specific process later, use the following command:
 
-**First-time setup:**
-```bash
-DEBUG=true node src/index.js \
-  --cu-url=http://127.0.0.1:8080 \
-  --mu-url=http://127.0.0.1:8080 \
-  --scheduler=0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51 \
-  test_name
-```
+   ```bash
+   DEBUG=true node src/index.js \
+    --cu-url=http://127.0.0.1:8080 \
+    --mu-url=http://127.0.0.1:8080 \
+    --scheduler=0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51 \
+    {{pricessid}}
+   ```
 
-**Reconnect to existing process:**
-```bash
-DEBUG=true node src/index.js \
-  --cu-url=http://127.0.0.1:8080 \
-  --mu-url=http://127.0.0.1:8080 \
-  --scheduler=0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51 \
-  {{process_id}}
-```
+### Examples
 
-#### 📋 Parameter Reference
-
-| Parameter | Description | Example |
-|-----------|-------------|----------|
-| `cu-url` | Compute Unit URL (same as VMDocker) | `http://127.0.0.1:8080` |
-| `mu-url` | Message Unit URL (same as VMDocker) | `http://127.0.0.1:8080` |
-| `scheduler` | VMDocker node ID | `0x972AeD...` |
-| `process_id` | Existing process ID for reconnection | `abc123...` |
-
-> 💡 **Tip**: Save your Process ID after the first launch for future reconnections!
-
-### 📚 Examples
-
-Explore the `examples/` directory for reference implementations:
-
-```bash
-ls examples/
-# Available examples:
-# - checkpoint.go   # Checkpoint and restore functionality
-# - eval.go         # Expression evaluation
-# - inbox.go        # Message inbox handling
-# - module.go       # Module management
-# - pingpong.go     # Basic communication test
-# - spawn.go        # Process spawning
-# - token.go        # Token operations
-# - stress.go       # Performance testing
-```
-
-#### 🏃‍♂️ Run Examples
-
-```bash
-cd examples
-
-# Run a specific example
-go run . <example_name>
-
-# Example: Run ping-pong test
-go run . pingpong
-```
-
-## 🔧 API Reference
-
-VMDocker exposes standard HyMatrix VM interface endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/apply` | POST | Execute computation |
-| `/checkpoint` | POST | Create state checkpoint |
-| `/restore` | POST | Restore from checkpoint |
-| `/health` | GET | Health check |
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Redis Connection Failed**
-```bash
-# Check Redis status
-sudo systemctl status redis-server
-
-# Restart Redis
-sudo systemctl restart redis-server
-```
-
-**Docker Permission Denied**
-```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
-
-# Restart session or run:
-newgrp docker
-```
-
-**CRIU Check Failed**
-```bash
-# Install missing dependencies
-sudo apt-get install criu
-
-# Verify installation
-criu check
-```
-
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 Links
-
-- 🌐 [HyMatrix Website](https://hymatrix.com/)
-- 📖 [Documentation](https://docs.hymatrix.com/)
-- 🐳 [Container Repository](https://github.com/cryptowizard0/vmdocker_container)
-- 🔧 [AOS Client](https://github.com/cryptowizard0/aos)
-
----
-
-<div align="center">
-
-**Built with ❤️ for the HyMatrix ecosystem**
-
-</div>
+Reference implementations are available in the `examples` directory.
