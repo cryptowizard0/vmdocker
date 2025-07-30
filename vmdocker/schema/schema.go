@@ -28,22 +28,6 @@ var (
 	MaxMem        = 12 * 1024 * 1024 * 1024 // max 12GB memory
 	CheckpointDir = "checkpoints"
 
-	// Images contains image configurations with verification info
-	Images = map[string]ImageInfo{
-		"golua": {
-			Name: "chriswebber/docker-golua:v0.0.2",
-			SHA:  "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b", // TODO: Replace with actual SHA
-		},
-		"ollama": {
-			Name: "chriswebber/docker-ollama:latest",
-			SHA:  "sha256:def456abc123...", // TODO: Replace with actual SHA
-		},
-		"default": {
-			Name: "chriswebber/docker-golua:v0.0.2",
-			SHA:  "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b", // TODO: Replace with actual SHA
-		},
-	}
-
 	// use mount to share models
 	UseMount    = false
 	MountSource = os.ExpandEnv("$HOME/.ollama/models")

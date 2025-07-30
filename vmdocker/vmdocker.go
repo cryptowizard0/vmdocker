@@ -66,34 +66,6 @@ func New(env vmmSchema.Env, nodeAddr string, tags []goarSchema.Tag) (*VmDocker, 
 	return v, nil
 }
 
-func NewFromCheckpoint(env vmmSchema.Env, checkpointName string, tags []goarSchema.Tag) (*VmDocker, error) {
-	v := &VmDocker{
-		pid: env.Id,
-		Env: env,
-		client: &http.Client{
-			Transport: &http.Transport{
-				DisableKeepAlives: true, // No keep-alive
-			},
-			Timeout: 60 * time.Second,
-		},
-		closeChan: make(chan struct{}),
-	}
-
-	err := v.initProcessFromCheckpoint(checkpointName)
-	if err != nil {
-		log.Error("init process from checkpoint failed", "err", err)
-		return nil, err
-	}
-	log.Debug("create process from checkpoint success", "pid", v.pid)
-	return v, nil
-}
-
-func (v *VmDocker) initProcessFromCheckpoint(checkpointName string) error {
-	// log.Debug("init ao process from checkpoint", "pid", v.pid)
-	// return v.Restore([]byte(checkpointName))
-	return nil
-}
-
 func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error {
 	log.Debug("init ao process", "pid", v.pid)
 	ctx := context.Background()

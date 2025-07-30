@@ -39,13 +39,6 @@ type DockerManager struct {
 	portAllocator *PortAllocator
 }
 
-func getImageByRuntime(moduleFormat string) schema.ImageInfo {
-	if image, exists := schema.Images[moduleFormat]; exists {
-		return image
-	}
-	return schema.Images["default"]
-}
-
 // ensureImageExists checks if image exists locally, pulls it if not, and verifies SHA
 func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema.ImageInfo) error {
 	// Check if image exists locally
