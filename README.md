@@ -405,7 +405,7 @@ Participating nodes earn rewards for:
 
 > 📖 **For detailed network joining instructions**, see [HyMatrix Network Documentation](https://docs.hymatrix.com/docs/category/join-the-network)
 
-## 使用
+## Using
 
 ### Run AOS Client
 
