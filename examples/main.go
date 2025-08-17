@@ -6,6 +6,7 @@ import (
 
 	"github.com/everFinance/goether"
 	"github.com/hymatrix/hymx/sdk"
+	"github.com/hymatrix/hymx/vmm/core/token/schema"
 	"github.com/permadao/goar"
 )
 
@@ -16,10 +17,11 @@ var (
 	signer, _  = goether.NewSigner(prvKey)
 	bundler, _ = goar.NewBundler(signer)
 	s          = sdk.NewFromBundler(url, bundler)
-	s2         = sdk.New(url, "./test_keyfile2.json")
+	// s2         = sdk.New(url, "./test_keyfile2.json")
 
-	module    = "qvsXuWo0sLardhzyNJI-9JGbWOFYqQz7PZfUD2JlgvU"
-	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
+	module     = "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU"
+	scheduler  = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
+	scheduler2 = "0x6608EEb2290E31FBb78E134f8F262A11B3A1673d"
 )
 
 func main() {
@@ -32,6 +34,18 @@ func main() {
 	switch cmd {
 	case "init":
 		initRegistry(initToken())
+	case "transfer":
+		if len(os.Args) < 3 {
+			fmt.Println("please provide to address for transfer")
+			os.Exit(1)
+		}
+		toAddr := os.Args[2]
+		err := transfer(s, toAddr, schema.StakeMinAmount)
+		if err != nil {
+			fmt.Printf("transfer err: %v\n", err)
+		} else {
+			fmt.Println("transfer success to ", toAddr)
+		}
 	case "pingpong":
 		pingpong()
 	case "sendMessage":

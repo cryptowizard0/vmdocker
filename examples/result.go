@@ -14,7 +14,7 @@ func result() {
 	// spawn target1
 	res, err := s.Spawn(
 		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
 		[]goarSchema.Tag{},
 	)
 	if err != nil {

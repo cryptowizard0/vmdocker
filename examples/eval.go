@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/permadao/goar/schema"
 	goarSchema "github.com/permadao/goar/schema"
@@ -30,12 +31,13 @@ func eval() {
 		Cache({Name2 = 'World2'})
 	`
 
+	time.Sleep(2000 * time.Millisecond)
+
+	// s2 := sdk.NewFromBundler("http://127.0.0.1:8081", bundler)
 	res, err = s.SendMessageAndWait(target, code,
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: code},
 		})
 	if err != nil {

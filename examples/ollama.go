@@ -15,7 +15,7 @@ func ollama() {
 
 	res, err = s.SpawnAndWait(
 		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
 		[]goarSchema.Tag{
 			{Name: "Module-Format", Value: "ollama"},
 			// {Name: "RuntimeType", Value: "golua"},

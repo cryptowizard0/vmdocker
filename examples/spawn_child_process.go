@@ -12,7 +12,7 @@ import (
 
 func spawnChild() {
 	res, err := s.SpawnAndWait(
-		"qvsXuWo0sLardhzyNJI-9JGbWOFYqQz7PZfUD2JlgvU",
+		"S2LFLHw7cQlpPLiuPN-_e84qLFfU1rRA_l7Tt7hDTQ0",
 		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
 		[]goarSchema.Tag{},
 	)
@@ -49,8 +49,6 @@ func spawn_step1(s *sdk.SDK, target string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target},
-			{Name: "Module", Value: "qvsXuWo0sLardhzyNJI-9JGbWOFYqQz7PZfUD2JlgvU"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {
