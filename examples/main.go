@@ -17,11 +17,9 @@ var (
 	signer, _  = goether.NewSigner(prvKey)
 	bundler, _ = goar.NewBundler(signer)
 	s          = sdk.NewFromBundler(url, bundler)
-	// s2         = sdk.New(url, "./test_keyfile2.json")
 
-	module     = "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU"
-	scheduler  = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
-	scheduler2 = "0x6608EEb2290E31FBb78E134f8F262A11B3A1673d"
+	module    = "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU"
+	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
 )
 
 func main() {
@@ -48,8 +46,6 @@ func main() {
 		}
 	case "pingpong":
 		pingpong()
-	case "sendMessage":
-		sendMessage()
 	case "module":
 		genModule()
 	case "spawn":
@@ -66,21 +62,10 @@ func main() {
 		reply()
 	case "inbox":
 		inbox()
-	case "result":
-		result()
 	case "ollama":
 		ollama()
-	case "recover1":
-		recover1()
-	case "recover2":
-		recover2()
 	case "stress":
 		doTansfer()
-	case "checkpoint1":
-		checkpoint_1()
-	case "checkpoint2":
-		pid := os.Args[2]
-		checkpoint_2(pid)
 	default:
 		fmt.Printf("unknown cmd: %s\n", cmd)
 		os.Exit(1)

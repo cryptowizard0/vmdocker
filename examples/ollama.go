@@ -9,7 +9,6 @@ import (
 )
 
 func ollama() {
-	//s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
 	var res *serverSchema.Response
 	var err error
 
@@ -34,8 +33,6 @@ func ollama() {
 			{Name: "Action", Value: "Chat"},
 			{Name: "Prompt", Value: "hello"},
 			{Name: "Target", Value: target},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 		})
 	if err != nil {
 		fmt.Println("handler error: ", err)

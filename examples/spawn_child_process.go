@@ -12,8 +12,8 @@ import (
 
 func spawnChild() {
 	res, err := s.SpawnAndWait(
-		"S2LFLHw7cQlpPLiuPN-_e84qLFfU1rRA_l7Tt7hDTQ0",
-		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -63,31 +63,6 @@ func spawn_step2(s *sdk.SDK, target string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "New"},
 			{Name: "Target", Value: target},
-		})
-	if err != nil {
-		fmt.Println("sendto error: ", err)
-		return
-	}
-	fmt.Println("sendto ok, ", res)
-}
-
-func spawn_step3(s *sdk.SDK, target, target2 string) {
-	childProcess := target2
-
-	code := `
-		print("hello eval")
-		local json = require("json")
-		-- local data = json.encode(ao.env)
-		-- print(data)
-		print(Owner)
-		print(ao.id)
-	`
-	res, err := s.SendMessage(target, "",
-		[]schema.Tag{
-			{Name: "Action", Value: "SendEval"},
-			{Name: "Target", Value: target},
-			{Name: "SendTo", Value: childProcess},
-			{Name: "Data", Value: code},
 		})
 	if err != nil {
 		fmt.Println("sendto error: ", err)

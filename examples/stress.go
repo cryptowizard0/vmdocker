@@ -14,7 +14,7 @@ func doTansfer() {
 	start := time.Now()
 	var wg sync.WaitGroup
 
-	concurrency := 15000
+	concurrency := 5000
 	sendCount := 5
 	var successCount int32
 
@@ -38,6 +38,6 @@ func doTansfer() {
 	elapsed := time.Since(start).Seconds()
 
 	tps := float64(concurrency*sendCount) / elapsed
-	fmt.Println("并发数: ", concurrency, ", 单并发循环数: ", sendCount, ", 总交易数: ", concurrency*sendCount, ", 成功: ", successCount)
-	fmt.Printf("总耗时: %.2fs, TPS: %.2f\n", elapsed, tps)
+	fmt.Println("Concurrency: ", concurrency, ", Loops per goroutine: ", sendCount, ", Total transactions: ", concurrency*sendCount, ", Success: ", successCount)
+	fmt.Printf("Total time: %.2fs, TPS: %.2f\n", elapsed, tps)
 }

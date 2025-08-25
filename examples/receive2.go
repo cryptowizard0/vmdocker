@@ -11,8 +11,8 @@ func receive2() {
 
 	// spawn target1
 	res, err := s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -24,8 +24,8 @@ func receive2() {
 
 	// spawn target2
 	res, err = s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {

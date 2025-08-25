@@ -62,8 +62,6 @@ func inbox_step1(s *sdk.SDK, target1, target2, luaFile string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target1},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {

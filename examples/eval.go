@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/permadao/goar/schema"
 	goarSchema "github.com/permadao/goar/schema"
 )
 
 func eval() {
-	// s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
-
 	res, err := s.SpawnAndWait(
 		module,
 		scheduler,
@@ -31,9 +28,6 @@ func eval() {
 		Cache({Name2 = 'World2'})
 	`
 
-	time.Sleep(2000 * time.Millisecond)
-
-	// s2 := sdk.NewFromBundler("http://127.0.0.1:8081", bundler)
 	res, err = s.SendMessageAndWait(target, code,
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
@@ -44,5 +38,5 @@ func eval() {
 		fmt.Println("handler error: ", err)
 		return
 	}
-	fmt.Println("target1 load ok, ", res)
+	fmt.Println("res, ", res)
 }
