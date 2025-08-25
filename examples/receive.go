@@ -15,8 +15,8 @@ func receive() {
 
 	// spawn target1
 	res, err := s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -28,8 +28,8 @@ func receive() {
 
 	// spawn target2
 	res, err = s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -64,8 +64,6 @@ func receive_step1(s *sdk.SDK, target1, target2, luaFile string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target1},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {
@@ -78,8 +76,6 @@ func receive_step1(s *sdk.SDK, target1, target2, luaFile string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target2},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {

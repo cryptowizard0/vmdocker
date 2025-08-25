@@ -15,8 +15,8 @@ func genModule() {
 		Base:         schema.DefaultBaseModule,
 		ModuleFormat: "web.vmdocker-golua-ao.v0.0.1",
 		Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.2"},
-			{Name: "Image-ID", Value: "sha256:a083ff79090cdd084ea428b6a9896e29eddfd767b5c5637a65a02ce1e073a88b"},
+			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.4"},
+			{Name: "Image-ID", Value: "sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f"},
 		},
 	})
 	bin, _ := json.Marshal(item)

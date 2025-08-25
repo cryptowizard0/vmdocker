@@ -9,13 +9,12 @@ import (
 )
 
 func ollama() {
-	//s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
 	var res *serverSchema.Response
 	var err error
 
 	res, err = s.SpawnAndWait(
 		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		"0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51",
 		[]goarSchema.Tag{
 			{Name: "Module-Format", Value: "ollama"},
 			// {Name: "RuntimeType", Value: "golua"},
@@ -34,8 +33,6 @@ func ollama() {
 			{Name: "Action", Value: "Chat"},
 			{Name: "Prompt", Value: "hello"},
 			{Name: "Target", Value: target},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 		})
 	if err != nil {
 		fmt.Println("handler error: ", err)

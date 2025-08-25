@@ -7,8 +7,9 @@ import (
 	"github.com/permadao/goar/schema"
 )
 
-func transfer(from *sdk.SDK, token, to string, amt *big.Int) error {
-	_, err := from.SendMessageAndWait(token, "",
+func transfer(from *sdk.SDK, to string, amt *big.Int) error {
+	info, _ := from.Client.Info()
+	_, err := from.SendMessageAndWait(info.Token, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "Transfer"},
 			{Name: "Recipient", Value: to},

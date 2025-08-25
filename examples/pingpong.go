@@ -11,12 +11,10 @@ import (
 )
 
 func pingpong() {
-	// s := sdk.New("http://127.0.0.1:8080", "../test_keyfile.json")
-
 	// spawn target1
 	res, err := s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -27,9 +25,11 @@ func pingpong() {
 	fmt.Println("spawn target1: ", target1)
 
 	// spawn target2
-	res, err = s.SpawnAndWait(
-		"LSjhdzBjyWuyUPe-g6PUzt8t1PUlw2FZ9SM3_hCh2Is",
-		"eIgnDk4vSKPe0lYB6yhCHDV1dOw3JgYHGocfj7WGrjQ",
+	//s2 := sdk.NewFromBundler("http://127.0.0.1:8081", bundler)
+	s2 := s
+	res, err = s2.SpawnAndWait(
+		module,
+		scheduler,
 		[]goarSchema.Tag{},
 	)
 	if err != nil {
@@ -64,13 +64,10 @@ func pingpong_step1(s *sdk.SDK, target1, target2 string) {
 		return
 	}
 	strCode := string(content)
-	address := s.GetAddress()
 	res, err := s.SendMessageAndWait(target1, strCode,
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target1},
-			{Name: "Module", Value: "0x84534"},
-			{Name: "Block-Height", Value: "100000"},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {
@@ -83,11 +80,6 @@ func pingpong_step1(s *sdk.SDK, target1, target2 string) {
 		[]schema.Tag{
 			{Name: "Action", Value: "Eval"},
 			{Name: "Target", Value: target2},
-			{Name: "Module", Value: "0x84534"},
-			// {Name: "Owner", Value: address},
-			// {Name: "Id", Value: "0x131313"},
-			{Name: "Block-Height", Value: "100000"},
-			{Name: "From", Value: address},
 			{Name: "Data", Value: strCode},
 		})
 	if err != nil {
@@ -98,18 +90,15 @@ func pingpong_step1(s *sdk.SDK, target1, target2 string) {
 }
 
 func pingpong_step2(s *sdk.SDK, target1, target2 string) {
-	// address := s.GetAddress()
 	res, err := s.SendMessageAndWait(target1, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "SendPing"},
 			{Name: "Target", Value: target1},
-			// {Name: "Owner", Value: address},
-			// {Name: "From", Value: address},
 			{Name: "SendTo", Value: target2},
 		})
 	if err != nil {
 		fmt.Println("sendto error: ", err)
 		return
 	}
-	fmt.Println("sendto ok, ", res)
+	fmt.Println("send ping msg ok, ", res)
 }

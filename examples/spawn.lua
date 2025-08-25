@@ -9,7 +9,7 @@ Handlers.add('new', Handlers.utils.hasMatchingTag('Action', 'New'), function(msg
             { name = "Scheduler", value = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51" },
         }
     }
-    local ret = ao.spawn("qvsXuWo0sLardhzyNJI-9JGbWOFYqQz7PZfUD2JlgvU", spawnMessage).receive()
+    local ret = ao.spawn("4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU", spawnMessage).receive()
     local process_id = ret.Tags['Process']
     print("Spawned process: ".. process_id)
 end)
@@ -29,7 +29,5 @@ Handlers.add("send_eval", Handlers.utils.hasMatchingTag("Action", "SendEval"), f
         Target = msg.SendTo,
         Action = 'Eval',
         Data = msg.Data,
-        Module = '0x83749',
-        ['Block-Height'] = "1231231",
     })
 end)
