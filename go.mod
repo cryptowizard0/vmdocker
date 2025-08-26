@@ -7,7 +7,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/everFinance/goether v1.2.0
 	github.com/gin-gonic/gin v1.10.0
-	github.com/hymatrix/hymx v0.1.2
+	github.com/hymatrix/hymx v0.1.3
 	github.com/inconshreveable/log15 v2.16.0+incompatible
 	github.com/permadao/goar v1.1.1
 	github.com/spf13/viper v1.19.0
