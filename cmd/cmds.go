@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"time"
 
+	nodeSchema "github.com/hymatrix/hymx/node/schema"
+	"github.com/hymatrix/hymx/schema"
 	"github.com/urfave/cli/v2"
 )
 
@@ -34,7 +36,7 @@ var (
 				command := exec.Command(path, "--config", c.String("config"))
 
 				// log
-				logName := fmt.Sprintf("%s_%s_%d.log", Name, Version, time.Now().Unix())
+				logName := fmt.Sprintf("%s_%s_%d.log", schema.DataProtocol, nodeSchema.NodeVersion, time.Now().Unix())
 				logFile, err := os.OpenFile(logName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 				if err != nil {
 					return err
@@ -70,7 +72,7 @@ var (
 				if err := os.Remove(Pid); err != nil {
 					return err
 				}
-				log.Info("server stopped")
+				log.Info("server is stopped")
 
 				return nil
 			},

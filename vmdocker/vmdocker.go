@@ -19,7 +19,7 @@ import (
 
 var log = common.NewLog("vmdocker")
 
-func SpawnVmDocker(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
+func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 	vmd, err := New(env, env.Process.Scheduler, env.Process.Tags)
 	if err != nil {
 		return
@@ -29,7 +29,7 @@ func SpawnVmDocker(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 	if err != nil {
 		return
 	}
-	log.Info("spawn process success", "pid", env.Id, "from", env.AccId)
+	log.Info("spawn process success", "pid", env.Meta.Pid, "from", env.Meta.AccId)
 	return vmd, nil
 }
 
@@ -53,7 +53,7 @@ func New(env vmmSchema.Env, nodeAddr string, tags []goarSchema.Tag) (*VmDocker, 
 		return nil, err
 	}
 	v := &VmDocker{
-		pid: env.Id,
+		pid: env.Meta.ItemId,
 		Env: env,
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -106,7 +106,7 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	// create ao process
 	return v.spawn(schema.SpawnRequest{
 		Pid:    v.pid,
-		Owner:  v.Env.AccId,
+		Owner:  v.Env.Meta.AccId,
 		CuAddr: cuAddr,
 		Data:   data,
 		Tags:   tags,
@@ -114,12 +114,70 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	})
 }
 
-func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) (*vmmSchema.Result, error) { // TODO implement me
-	return v.apply(schema.ApplyRequest{
+func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) vmmSchema.Result {
+	res, _ := v.apply(schema.ApplyRequest{
 		From:   from,
 		Meta:   meta,
 		Params: meta.Params,
 	})
+	return *res
+}
+
+func (v *VmDocker) Checkpoint() (string, error) {
+	dm, err := GetDockerManager()
+	if err != nil {
+		log.Error("get docker manager failed", "err", err)
+		return "", err
+	}
+	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, v.Env.Nonce)
+	data, err := dm.Checkpoint(context.Background(), v.pid, checkpointName)
+	if err != nil {
+		log.Error("create checkpoint failed", "err", err, "pid", v.pid)
+		return "", err
+	}
+	log.Info("create checkpoint success", "pid", v.pid, "checkpointName", checkpointName)
+	return data, nil
+}
+
+func (v *VmDocker) Restore(snapshot string) error {
+	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, time.Now().Unix())
+	log.Debug("restore process", "pid", v.pid, "name", checkpointName)
+
+	// stop container first
+	dm, err := GetDockerManager()
+	if err != nil {
+		log.Error("get docker manager failed", "err", err)
+		return err
+	}
+	err = dm.StopContainer(context.Background(), v.pid)
+	if err != nil {
+		log.Error("stop container failed", "err", err)
+		return err
+	}
+
+	// start container from checkpoint
+	err = dm.Restore(context.Background(), v.pid, checkpointName, snapshot)
+	if err != nil {
+		log.Error("restore failed", "err", err, "pid", v.pid)
+		return err
+	}
+	return nil
+}
+
+func (v *VmDocker) Close() error {
+	// Signal waitForContainerReady to exit immediately
+	select {
+	case v.closeChan <- struct{}{}:
+	default:
+		// Channel might be full or closed, ignore
+	}
+
+	dm, err := GetDockerManager()
+	if err != nil {
+		log.Error("get docker manager failed", "err", err)
+		return err
+	}
+	return dm.RemoveContainer(context.Background(), v.pid)
 }
 
 // waitForContainerReady waits for the container to be ready by checking health endpoint
@@ -271,61 +329,4 @@ func (v *VmDocker) apply(msg schema.ApplyRequest) (outbox *vmmSchema.Result, err
 	}
 
 	return
-}
-
-func (v *VmDocker) Checkpoint() (string, error) {
-	dm, err := GetDockerManager()
-	if err != nil {
-		log.Error("get docker manager failed", "err", err)
-		return "", err
-	}
-	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, v.Env.Nonce)
-	data, err := dm.Checkpoint(context.Background(), v.pid, checkpointName)
-	if err != nil {
-		log.Error("create checkpoint failed", "err", err, "pid", v.pid)
-		return "", err
-	}
-	log.Info("create checkpoint success", "pid", v.pid, "checkpointName", checkpointName)
-	return data, nil
-}
-
-func (v *VmDocker) Restore(snapshot string) error {
-	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, time.Now().Unix())
-	log.Debug("restore process", "pid", v.pid, "name", checkpointName)
-
-	// stop container first
-	dm, err := GetDockerManager()
-	if err != nil {
-		log.Error("get docker manager failed", "err", err)
-		return err
-	}
-	err = dm.StopContainer(context.Background(), v.pid)
-	if err != nil {
-		log.Error("stop container failed", "err", err)
-		return err
-	}
-
-	// start container from checkpoint
-	err = dm.Restore(context.Background(), v.pid, checkpointName, snapshot)
-	if err != nil {
-		log.Error("restore failed", "err", err, "pid", v.pid)
-		return err
-	}
-	return nil
-}
-
-func (v *VmDocker) Close() error {
-	// Signal waitForContainerReady to exit immediately
-	select {
-	case v.closeChan <- struct{}{}:
-	default:
-		// Channel might be full or closed, ignore
-	}
-
-	dm, err := GetDockerManager()
-	if err != nil {
-		log.Error("get docker manager failed", "err", err)
-		return err
-	}
-	return dm.RemoveContainer(context.Background(), v.pid)
 }
