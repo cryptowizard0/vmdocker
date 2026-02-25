@@ -5,9 +5,10 @@ go 1.24.2
 require (
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/docker/go-connections v0.5.0
+	github.com/ethereum/go-ethereum v1.14.11
 	github.com/everFinance/goether v1.2.0
 	github.com/gin-gonic/gin v1.10.0
-	github.com/hymatrix/hymx v0.4.3
+	github.com/hymatrix/hymx v0.4.7
 	github.com/inconshreveable/log15 v2.16.0+incompatible
 	github.com/permadao/goar v1.1.1
 	github.com/spf13/viper v1.19.0
@@ -37,7 +38,6 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ethereum/c-kzg-4844 v1.0.3 // indirect
-	github.com/ethereum/go-ethereum v1.14.11 // indirect
 	github.com/ethereum/go-verkle v0.1.1-0.20240829091221-dffa7562dbe9 // indirect
 	github.com/everFinance/ethrpc v1.0.4 // indirect
 	github.com/everFinance/gojwk v1.0.0 // indirect

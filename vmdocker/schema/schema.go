@@ -10,9 +10,7 @@ import (
 )
 
 const (
-	ModuleFormat = "web.vmdocker-golua-ao.v0.0.1"
-	// example: web.vmdocker-golua-ao.v0.0.1
-	// example: web.vmdocker-ollama.v0.0.1
+	ModuleFormat = "hymx.vmdocker.v0.0.1"
 )
 
 // ImageInfo contains image name and verification information
