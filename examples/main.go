@@ -6,6 +6,7 @@ import (
 
 	"github.com/everFinance/goether"
 	"github.com/hymatrix/hymx/sdk"
+	registrySchema "github.com/hymatrix/hymx/vmm/core/registry/schema"
 	"github.com/hymatrix/hymx/vmm/core/token/schema"
 	"github.com/permadao/goar"
 )
@@ -20,6 +21,12 @@ var (
 
 	module    = "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU"
 	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
+
+	mainNode = registrySchema.Node{
+		Name: "test",
+		Desc: "test node",
+		URL:  url,
+	}
 )
 
 func main() {
@@ -31,7 +38,12 @@ func main() {
 	cmd := os.Args[1]
 	switch cmd {
 	case "init":
-		initRegistry(initToken())
+		tokenPid, err := initToken()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		initRegistry(tokenPid, mainNode)
 	case "transfer":
 		if len(os.Args) < 3 {
 			fmt.Println("please provide to address for transfer")
@@ -66,6 +78,8 @@ func main() {
 		ollama()
 	case "stress":
 		doTansfer()
+	case "test":
+		agentTestRT()
 	default:
 		fmt.Printf("unknown cmd: %s\n", cmd)
 		os.Exit(1)
