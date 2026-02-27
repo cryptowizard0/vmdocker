@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
 	"github.com/hymatrix/hymx/schema"
 	arSchema "github.com/permadao/goar/schema"
 )
@@ -11,10 +12,10 @@ func genModule() {
 	// ex ModuleFormat: "org.type.1.0.0"
 	itemId, err := s.SaveModule([]byte{}, schema.Module{
 		Base:         schema.DefaultBaseModule,
-		ModuleFormat: "web.vmdocker-golua-ao.v0.0.1",
+		ModuleFormat: vmdockerSchema.ModuleFormat,
 		Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.4"},
-			{Name: "Image-ID", Value: "sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f"},
+			{Name: "Image-Name", Value: "chriswebber/docker-testrt:v0.0.1"},
+			{Name: "Image-ID", Value: "sha256:00501e9a7d5310e245eeb0ca5224ea5ce9ba76fd7f9b5de219b1636675b65c33"},
 		},
 	})
 	if err != nil {
