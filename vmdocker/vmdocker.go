@@ -115,11 +115,18 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 }
 
 func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) vmmSchema.Result {
-	res, _ := v.apply(schema.ApplyRequest{
+	res, err := v.apply(schema.ApplyRequest{
 		From:   from,
 		Meta:   meta,
 		Params: meta.Params,
 	})
+
+	if err != nil {
+		return vmmSchema.Result{Error: err}
+	}
+	if res == nil {
+		return vmmSchema.Result{Error: fmt.Errorf("apply returned nil result")}
+	}
 	return *res
 }
 

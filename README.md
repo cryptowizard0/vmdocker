@@ -4,8 +4,8 @@
 
 **A Docker-based Virtual Machine Implementation for HyMatrix Computing Network**
 
-[![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://golang.org/)
-[![Docker](https://img.shields.io/badge/Docker-27.3.x-blue.svg)](https://www.docker.com/)
+[![Go Version](https://img.shields.io/badge/Go-1.24.2-blue.svg)](https://golang.org/)
+[![Docker](https://img.shields.io/badge/Docker-28.0.x-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![HyMatrix](https://img.shields.io/badge/HyMatrix-Compatible-orange.svg)](https://hymatrix.com/)
 
@@ -67,8 +67,8 @@ type Vm interface {
 | Component | Version | Platform | Required |
 |-----------|---------|----------|----------|
 | **Operating System** | Linux | Any | ✅ |
-| **Go** | 1.24.0+ | Any | ✅ |
-| **Docker** | 27.3.x | Any | ✅ |
+| **Go** | 1.24.2 | Any | ✅ |
+| **Docker** | 28.0.x | Any | ✅ |
 | **Redis** | Latest | Any | ✅ |
 | **Clang/GCC** | Latest | Any | ✅ (for CGO) |
 | **CRIU** | v4.1 | Linux only | ⚠️ (for checkpoint) |
@@ -133,7 +133,7 @@ criu check
 
 ### 🐳 Docker Configuration
 
-> ⚠️ **Important**: Docker version `27.3.x` is required for optimal compatibility.
+> ⚠️ **Important**: Docker version `28.0.x` is required for optimal compatibility.
 
 #### Enable Experimental Features
 
@@ -246,8 +246,8 @@ item, _ := s.GenerateModule([]byte{}, schema.Module{
     Base:         schema.DefaultBaseModule,
     ModuleFormat: "web.vmdocker-golua-ao.v0.0.1",  // Must start with "web.vmdocker-"
     Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.2"},
-			{Name: "Image-ID", Value: "sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b"},
+			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.4"},
+			{Name: "Image-ID", Value: "sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f"},
 		},
 })
 ```
@@ -298,11 +298,11 @@ To obtain the correct `Image-ID` value:
 
 ```bash
 # Pull the image
-docker pull chriswebber/docker-golua:v0.0.2
+docker pull chriswebber/docker-golua:v0.0.4
 
 # Get the SHA256 digest
-docker inspect chriswebber/docker-golua:v0.0.2 --format='{{.Id}}'
-# Output: sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b
+docker inspect chriswebber/docker-golua:v0.0.4 --format='{{.Id}}'
+# Output: sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f
 ```
 
 ## 🔧 Module Setup
@@ -439,7 +439,7 @@ vmdocker is an AO-compatible system. Use the modified AOS to connect to vmdocker
     --cu-url=http://127.0.0.1:8080 \
     --mu-url=http://127.0.0.1:8080 \
     --scheduler=0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51 \
-    {{pricessid}}
+    {{processId}}
    ```
 
 ### Examples

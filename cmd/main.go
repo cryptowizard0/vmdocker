@@ -93,7 +93,7 @@ func run(c *cli.Context) (err error) {
 	// ex:
 	// s.AddResultHandler(handlers)
 
-	s.Run(port)
+	s.Run(port, nodeSchema.StartModeNormal)
 
 	log.Info("server is running", "protocol version", schema.Variant, "node version", nodeSchema.NodeVersion, "wallet", bundler.Address, "port", port)
 

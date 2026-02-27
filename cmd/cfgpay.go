@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/everFinance/goether"
@@ -36,24 +37,47 @@ func LoadPayConfig() (*pay.Pay, error) {
 	residencyFeeStr := viper.GetString("payment.residencyFee")
 	dailyLimit := viper.GetInt64("payment.dailyLimit")
 	devRatioStr := viper.GetString("payment.developerShareRatio")
+	if !common.IsHexAddress(settlementAddrStr) {
+		return nil, fmt.Errorf("invalid payment.settlementAddress: %q", settlementAddrStr)
+	}
+	txFee, err := parseBigInt("payment.txFee", txFeeStr)
+	if err != nil {
+		return nil, err
+	}
+	spawnFee, err := parseBigInt("payment.spawnFee", spawnFeeStr)
+	if err != nil {
+		return nil, err
+	}
+	residencyFee, err := parseBigInt("payment.residencyFee", residencyFeeStr)
+	if err != nil {
+		return nil, err
+	}
+	devRatio, err := parseBigInt("payment.developerShareRatio", devRatioStr)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &schema.Config{
 		SettlementAddress:   common.HexToAddress(settlementAddrStr).String(),
 		AxToken:             axToken,
-		TxFee:               mustBigInt(txFeeStr),
-		SpawnFee:            mustBigInt(spawnFeeStr),
-		ResidencyFee:        mustBigInt(residencyFeeStr),
+		TxFee:               txFee,
+		SpawnFee:            spawnFee,
+		ResidencyFee:        residencyFee,
 		DailyLimit:          dailyLimit,
-		DeveloperShareRatio: mustBigInt(devRatioStr),
+		DeveloperShareRatio: devRatio,
 	}
 
 	return pay.New(axURL, bundler, cfg), nil
 }
 
-func mustBigInt(s string) *big.Int {
+func parseBigInt(field, s string) (*big.Int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("%s is required", field)
+	}
 	bi, ok := new(big.Int).SetString(s, 10)
 	if !ok {
-		panic(fmt.Sprintf("invalid big.Int string: %v", s))
+		return nil, fmt.Errorf("%s must be a base-10 integer, got %q", field, s)
 	}
-	return bi
+	return bi, nil
 }
