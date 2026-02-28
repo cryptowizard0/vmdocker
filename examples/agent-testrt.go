@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/permadao/goar/schema"
 	goarSchema "github.com/permadao/goar/schema"
@@ -20,6 +21,9 @@ func agentTestRT() error {
 	}
 	target := res.Id
 	fmt.Println("spawn agent testrt: ", target)
+
+	//sleep 1s
+	time.Sleep(1 * time.Second)
 
 	res, err = s.SendMessageAndWait(target, "",
 		[]schema.Tag{

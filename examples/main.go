@@ -79,7 +79,12 @@ func main() {
 	case "stress":
 		doTansfer()
 	case "test":
-		agentTestRT()
+		err := agentTestRT()
+		if err != nil {
+			fmt.Printf("agentTestRT err: %v\n", err)
+		} else {
+			fmt.Println("agentTestRT success")
+		}
 	default:
 		fmt.Printf("unknown cmd: %s\n", cmd)
 		os.Exit(1)
