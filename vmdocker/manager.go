@@ -164,9 +164,9 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 			Memory:     int64(schema.MaxMem),
 			MemorySwap: -1, // no swap
 			PidsLimit:  &pidsLimit,
-			// CPUPeriod:  100000,                 // 100ms
-			// CPUQuota:   20000,                  // 0.2 CPU
-			// CPUShares:  512,                    // half CPU
+			CPUPeriod:  100000, // 100ms
+			CPUQuota:   50000,  // 0.5 CPU
+			CPUShares:  1024,   // Standard weight
 		},
 	}
 	if schema.UseMount {
@@ -282,7 +282,7 @@ func (dm *DockerManager) Checkpoint(ctx context.Context, pid, checkpointName str
 		log.Error("failed to get checkpoint cache directory", "pid", pid, "err", err)
 		return "", err
 	}
-	if err := os.MkdirAll(checkpointDir, 0777); err != nil {
+	if err := os.MkdirAll(checkpointDir, 0755); err != nil {
 		log.Error("failed to create checkpoint directory", "pid", pid, "err", err)
 		return "", fmt.Errorf("failed to create checkpoint directory: %v", err)
 	}
