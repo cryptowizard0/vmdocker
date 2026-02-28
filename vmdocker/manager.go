@@ -148,6 +148,7 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 	}
 
 	// Set port bindings
+	pidsLimit := int64(256)
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
 			nat.Port(schema.ExprotPort): []nat.PortBinding{
@@ -157,10 +158,12 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 				},
 			},
 		},
-		SecurityOpt: []string{"seccomp=unconfined"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+		CapDrop:     []string{"ALL"},
 		Resources: container.Resources{
 			Memory:     int64(schema.MaxMem),
 			MemorySwap: -1, // no swap
+			PidsLimit:  &pidsLimit,
 			// CPUPeriod:  100000,                 // 100ms
 			// CPUQuota:   20000,                  // 0.2 CPU
 			// CPUShares:  512,                    // half CPU
@@ -177,6 +180,7 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 	}
 	config := &container.Config{
 		Image: imageInfo.Name,
+		User:  "65532:65532",
 		ExposedPorts: nat.PortSet{
 			nat.Port(schema.ExprotPort): struct{}{},
 		},

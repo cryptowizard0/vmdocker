@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // CompressDirectory compresses the specified directory into a tar.gz format string.
@@ -92,6 +93,7 @@ func DecompressToDirectory(data string, destPath string) error {
 	if err := os.MkdirAll(destPath, 0755); err != nil {
 		return err
 	}
+	destPath = filepath.Clean(destPath)
 
 	// Create gzip reader
 	gr, err := gzip.NewReader(bytes.NewReader(decodedData))
@@ -113,7 +115,19 @@ func DecompressToDirectory(data string, destPath string) error {
 			return err
 		}
 
-		target := filepath.Join(destPath, header.Name)
+		headerName := filepath.Clean(header.Name)
+		if filepath.IsAbs(header.Name) || headerName == ".." || strings.HasPrefix(headerName, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("invalid archive path: %q", header.Name)
+		}
+
+		target := filepath.Join(destPath, headerName)
+		rel, err := filepath.Rel(destPath, target)
+		if err != nil {
+			return fmt.Errorf("invalid archive path %q: %v", header.Name, err)
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("archive path escapes destination: %q", header.Name)
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -122,15 +136,21 @@ func DecompressToDirectory(data string, destPath string) error {
 				return err
 			}
 		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
 			// Create file
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
 			if err != nil {
 				return err
 			}
-			defer file.Close()
 
 			// Write file contents
 			if _, err := io.Copy(file, tr); err != nil {
+				file.Close()
+				return err
+			}
+			if err := file.Close(); err != nil {
 				return err
 			}
 		}
