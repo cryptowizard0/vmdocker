@@ -14,8 +14,9 @@ func genModule() {
 		Base:         schema.DefaultBaseModule,
 		ModuleFormat: vmdockerSchema.ModuleFormat,
 		Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-testrt:v0.0.1"},
-			{Name: "Image-ID", Value: "sha256:00501e9a7d5310e245eeb0ca5224ea5ce9ba76fd7f9b5de219b1636675b65c33"},
+			{Name: "Image-Name", Value: "chriswebber/docker-openclaw:v0.0.4"},
+			{Name: "Image-ID", Value: "sha256:a79268611c91b6c8cd5cf259eeb0de154fbdb152a73c28fdaeedbab596d6137b"},
+			{Name: "Openclaw-Version", Value: "2026.3.1-beta.1"},
 		},
 	})
 	if err != nil {

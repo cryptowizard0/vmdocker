@@ -43,7 +43,7 @@ type ContainerInfo struct {
 // IDockerManager defines the interface for docker operations
 type IDockerManager interface {
 	// CreateContainer creates a new container with the given process id
-	CreateContainer(ctx context.Context, pid string, imageInfo ImageInfo) (*ContainerInfo, error)
+	CreateContainer(ctx context.Context, pid string, imageInfo ImageInfo, containerEnv []string) (*ContainerInfo, error)
 
 	// GetContainer returns container info by process id
 	GetContainer(pid string) (*ContainerInfo, error)

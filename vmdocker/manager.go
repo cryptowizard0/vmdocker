@@ -130,7 +130,7 @@ func GetDockerManager() (schema.IDockerManager, error) {
 	return instance, nil
 }
 
-func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageInfo schema.ImageInfo) (*schema.ContainerInfo, error) {
+func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageInfo schema.ImageInfo, containerEnv []string) (*schema.ContainerInfo, error) {
 	log.Debug("create container", "pid", pid)
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
@@ -165,8 +165,8 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 			MemorySwap: -1, // no swap
 			PidsLimit:  &pidsLimit,
 			CPUPeriod:  100000, // 100ms
-			CPUQuota:   50000,  // 0.5 CPU
-			CPUShares:  1024,   // Standard weight
+			CPUQuota:   200000, // 1 CPU
+			CPUShares:  1024, // Standard weight
 		},
 	}
 	if schema.UseMount {
@@ -178,12 +178,14 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 			},
 		}
 	}
+	log.Debug("container with env", "env", containerEnv)
 	config := &container.Config{
 		Image: imageInfo.Name,
-		User:  "65532:65532",
+		// User:  "65532:65532",
 		ExposedPorts: nat.PortSet{
 			nat.Port(schema.ExprotPort): struct{}{},
 		},
+		Env: containerEnv,
 	}
 	resp, err := dm.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, ContainerNamePrefix+pid)
 	if err != nil {

@@ -84,8 +84,9 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 		Name: hymxUtils.GetTagsValueByDefault("Image-Name", v.Env.Module.Tags, ""),
 		SHA:  hymxUtils.GetTagsValueByDefault("Image-ID", v.Env.Module.Tags, ""),
 	}
+	containerEnv := utils.ContainerEnvFromTags(tags)
 	// start docker container
-	containerInfo, err := dm.CreateContainer(ctx, v.pid, imageInfo)
+	containerInfo, err := dm.CreateContainer(ctx, v.pid, imageInfo, containerEnv)
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,7 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 		return err
 	}
 	// Wait for container to be ready with health check
-	err = v.waitForContainerReady(ctx, 60*time.Second)
+	err = v.waitForContainerReady(ctx, 120*time.Second)
 	if err != nil {
 		return fmt.Errorf("container not ready: %v", err)
 	}
@@ -237,7 +238,7 @@ func (v *VmDocker) waitForContainerReady(ctx context.Context, timeout time.Durat
 }
 
 func (v *VmDocker) spawn(msg schema.SpawnRequest) error {
-	log.Debug("spawn ao process", "pid", v.pid)
+	log.Debug("spawn process", "pid", v.pid)
 
 	// safe check
 	if v.containerInfo == nil {
