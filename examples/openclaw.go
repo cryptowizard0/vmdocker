@@ -51,7 +51,7 @@ func telegramOpenclaw(target string) {
 	res, err := s.SendMessageAndWait(target, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "ConfigureTelegram"},
-			{Name: "botToken", Value: "8659441717:AAFjCdlu_o9D4xbSRshfqN5Kfku3VvyLol0"},
+			{Name: "botToken", Value: "xxxxx"},
 			{Name: "defaultAccount", Value: "main"},
 			{Name: "dmPolicy", Value: "pairing"},
 		})

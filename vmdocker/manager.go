@@ -187,7 +187,7 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 			MemorySwap: -1, // no swap
 			PidsLimit:  &pidsLimit,
 			CPUPeriod:  100000, // 100ms
-			CPUQuota:   200000, // 1 CPU
+			CPUQuota:   200000, // 2 CPU
 			CPUShares:  1024,   // Standard weight
 		},
 	}
