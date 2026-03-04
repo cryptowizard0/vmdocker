@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/everFinance/goether"
 	"github.com/hymatrix/hymx/sdk"
@@ -31,7 +32,7 @@ var (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("please input cmd, ex: pingpong, sendMessage, spawn, eval, eval2, receive, receive2, reply, inbox, result, checkpoint, ollama, recover1, recover2")
+		fmt.Println("please input cmd, ex: pingpong, sendMessage, spawn, eval, eval2, receive, receive2, reply, inbox, result, checkpoint, ollama, recover1, recover2, openclaw_spawn, openclaw_chat, openclaw_tg, openclaw_pair")
 		os.Exit(1)
 	}
 
@@ -85,6 +86,28 @@ func main() {
 		} else {
 			fmt.Println("agentTestRT success")
 		}
+	case "openclaw_spawn":
+		spawnOpenclaw()
+	case "openclaw_chat":
+		id := spawnOpenclaw()
+		if id != "" {
+			time.Sleep(1 * time.Second)
+			chatOpenclaw(id)
+		}
+	case "openclaw_tg":
+		id := spawnOpenclaw()
+		if id != "" {
+			time.Sleep(1 * time.Second)
+			telegramOpenclaw(id)
+		}
+	case "openclaw_pair":
+		if len(os.Args) < 4 {
+			fmt.Println("usage: openclaw_pair <pid> <pair_code>")
+			os.Exit(1)
+		}
+		id := os.Args[2]
+		code := os.Args[3]
+		pairTgOpenclaw(id, code)
 	default:
 		fmt.Printf("unknown cmd: %s\n", cmd)
 		os.Exit(1)

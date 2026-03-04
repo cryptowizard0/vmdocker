@@ -130,7 +130,7 @@ func GetDockerManager() (schema.IDockerManager, error) {
 	return instance, nil
 }
 
-func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageInfo schema.ImageInfo) (*schema.ContainerInfo, error) {
+func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageInfo schema.ImageInfo, containerEnv []string) (*schema.ContainerInfo, error) {
 	log.Debug("create container", "pid", pid)
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
@@ -160,30 +160,55 @@ func (dm *DockerManager) CreateContainer(ctx context.Context, pid string, imageI
 		},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		CapDrop:     []string{"ALL"},
+		MaskedPaths: []string{
+			"/proc/acpi",
+			"/proc/kcore",
+			"/proc/keys",
+			"/proc/latency_stats",
+			"/proc/timer_list",
+			"/proc/timer_stats",
+			"/proc/sched_debug",
+			"/proc/scsi",
+			"/sys/firmware",
+		},
+		ReadonlyPaths: []string{
+			"/etc/hosts",
+			"/etc/hostname",
+			"/etc/resolv.conf",
+			"/proc/asound",
+			"/proc/bus",
+			"/proc/fs",
+			"/proc/irq",
+			"/proc/sys",
+			"/proc/sysrq-trigger",
+		},
 		Resources: container.Resources{
 			Memory:     int64(schema.MaxMem),
 			MemorySwap: -1, // no swap
 			PidsLimit:  &pidsLimit,
 			CPUPeriod:  100000, // 100ms
-			CPUQuota:   50000,  // 0.5 CPU
+			CPUQuota:   200000, // 2 CPU
 			CPUShares:  1024,   // Standard weight
 		},
 	}
 	if schema.UseMount {
 		hostConfig.Mounts = []mount.Mount{
 			{
-				Type:   mount.TypeBind,
-				Source: schema.MountSource,
-				Target: schema.MountTarget,
+				Type:     mount.TypeBind,
+				Source:   schema.MountSource,
+				Target:   schema.MountTarget,
+				ReadOnly: true,
 			},
 		}
 	}
+	log.Debug("container with env", "env", containerEnv)
 	config := &container.Config{
 		Image: imageInfo.Name,
 		User:  "65532:65532",
 		ExposedPorts: nat.PortSet{
 			nat.Port(schema.ExprotPort): struct{}{},
 		},
+		Env: containerEnv,
 	}
 	resp, err := dm.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, ContainerNamePrefix+pid)
 	if err != nil {
