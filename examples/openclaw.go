@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	OpenclawModuleID = "S9UxD8ZmhowbDnCZv4IobxTIEU_OxsVHbk47Hl4Bg6o"
+	OpenclawModuleID = "SyNj7jn69zXD6y8nQjRYcnbJawAAPdd4khIiR_2w-6Q"
 )
 
 func spawnOpenclaw() string {
@@ -18,9 +18,7 @@ func spawnOpenclaw() string {
 		scheduler,
 		[]goarSchema.Tag{
 			{Name: "model", Value: "kimi-coding/k2p5"},
-			{Name: "apiKey", Value: "sk-kimi-7p1NNBVQXasKKaBGD4WxWppcvewjUp9x3TEuhVcpi1p1Hqq49ZM3fvPgI6wj3jyB"},
-			// {Name: utils.ContainerEnvTagPrefix + "RUNTIME_TYPE", Value: "openclaw"},
-			// {Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_URL", Value: "http://127.0.0.1:18789"},
+			{Name: "apiKey", Value: "sk-kimi-xxxx"},
 			{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_TOKEN", Value: "openclaw-test-token"},
 		},
 	)
