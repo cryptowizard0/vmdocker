@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	"github.com/hymatrix/hymx/schema"
 	arSchema "github.com/permadao/goar/schema"
 )

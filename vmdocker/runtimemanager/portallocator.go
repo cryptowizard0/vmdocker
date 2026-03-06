@@ -1,4 +1,4 @@
-package vmdocker
+package runtimemanager
 
 import (
 	"fmt"
@@ -6,22 +6,22 @@ import (
 	"sync"
 )
 
-type PortAllocator struct {
+type portAllocator struct {
 	start int
 	end   int
 	used  map[int]bool
 	mutex sync.Mutex
 }
 
-func NewPortAllocator(start, end int) *PortAllocator {
-	return &PortAllocator{
+func newPortAllocator(start, end int) *portAllocator {
+	return &portAllocator{
 		start: start,
 		end:   end,
 		used:  make(map[int]bool),
 	}
 }
 
-func (pa *PortAllocator) Allocate() (int, error) {
+func (pa *portAllocator) Allocate() (int, error) {
 	pa.mutex.Lock()
 	defer pa.mutex.Unlock()
 
@@ -34,7 +34,7 @@ func (pa *PortAllocator) Allocate() (int, error) {
 	return 0, fmt.Errorf("no available ports")
 }
 
-func (pa *PortAllocator) Release(port int) {
+func (pa *portAllocator) Release(port int) {
 	pa.mutex.Lock()
 	defer pa.mutex.Unlock()
 	delete(pa.used, port)

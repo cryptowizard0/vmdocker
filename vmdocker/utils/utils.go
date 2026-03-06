@@ -2,8 +2,9 @@ package utils
 
 import (
 	"errors"
+	"os"
 
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	hySchema "github.com/hymatrix/hymx/schema"
 	"github.com/hymatrix/hymx/utils"
 	goarSchema "github.com/permadao/goar/schema"
@@ -50,22 +51,53 @@ func BuildProcessTags(process hySchema.Process, nodeAddr string, tags []goarSche
 	return process, nil
 }
 
-// CheckModuleFormat validates that the module format:
-// - starts with "web.vmdocker-" prefix
-// - contains Image-Name and Image-ID tags
-func CheckModuleFormat(moduleFormat string, tags []goarSchema.Tag) error {
+func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.RuntimeSpec, error) {
 	if moduleFormat != schema.ModuleFormat {
-		return errors.New("module format is not " + schema.ModuleFormat)
+		return schema.RuntimeSpec{}, errors.New("module format is not " + schema.ModuleFormat)
 	}
 
 	imageName := utils.GetTagsValueByDefault("Image-Name", tags, "")
 	if imageName == "" {
-		return errors.New("Image-Name is empty")
+		return schema.RuntimeSpec{}, errors.New("Image-Name is empty")
 	}
 
-	imageID := utils.GetTagsValueByDefault("Image-ID", tags, "")
-	if imageID == "" {
-		return errors.New("Image-ID is empty")
+	backend := utils.GetTagsValueByDefault(schema.RuntimeBackendTag, tags, schema.BackendSandbox)
+	spec := schema.RuntimeSpec{
+		Backend: backend,
+		Image: schema.ImageInfo{
+			Name: imageName,
+			SHA:  utils.GetTagsValueByDefault("Image-ID", tags, ""),
+		},
+		Sandbox: schema.SandboxSpec{
+			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "openclaw"),
+			Workspace: utils.GetTagsValueByDefault(schema.SandboxWorkspaceTag, tags, os.Getenv("PWD")),
+			Network:   utils.GetTagsValueByDefault(schema.SandboxNetworkTag, tags, "restricted"),
+			Name:      utils.GetTagsValueByDefault(schema.SandboxNameTag, tags, ""),
+			Command:   utils.GetTagsValueByDefault(schema.SandboxCommandTag, tags, ""),
+		},
+	}
+
+	switch spec.Backend {
+	case schema.BackendDocker:
+		if spec.Image.SHA == "" {
+			return schema.RuntimeSpec{}, errors.New("Image-ID is empty")
+		}
+	case schema.BackendSandbox:
+		if spec.Sandbox.Workspace == "" {
+			return schema.RuntimeSpec{}, errors.New("Sandbox-Workspace is empty")
+		}
+	default:
+		return schema.RuntimeSpec{}, errors.New("unsupported runtime backend: " + spec.Backend)
+	}
+
+	return spec, nil
+}
+
+// CheckModuleFormat validates the module configuration for the selected runtime backend.
+func CheckModuleFormat(moduleFormat string, tags []goarSchema.Tag) error {
+	_, err := RuntimeSpecFromTags(moduleFormat, tags)
+	if err != nil {
+		return err
 	}
 
 	return nil

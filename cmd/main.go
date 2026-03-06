@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker"
-	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	"github.com/gin-gonic/gin"
 	"github.com/hymatrix/hymx/common"
 	"github.com/hymatrix/hymx/node"

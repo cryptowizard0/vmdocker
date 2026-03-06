@@ -9,10 +9,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager"
+	runtimeSchema "github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
+	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
 	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
 	"github.com/hymatrix/hymx/common"
-	hymxUtils "github.com/hymatrix/hymx/utils"
 	vmmSchema "github.com/hymatrix/hymx/vmm/schema"
 	goarSchema "github.com/permadao/goar/schema"
 )
@@ -36,8 +37,8 @@ func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 type VmDocker struct {
 	pid string
 	Env vmmSchema.Env
-	// container info
-	containerInfo *schema.ContainerInfo
+	// runtime info
+	instanceInfo *runtimeSchema.InstanceInfo
 	// http client
 	client *http.Client
 	// close channel to signal container shutdown
@@ -70,42 +71,36 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	log.Debug("init ao process", "pid", v.pid)
 	ctx := context.Background()
 
-	dm, err := GetDockerManager()
+	runtimeManager, err := runtimemanager.GetRuntimeManager()
 	if err != nil {
-		log.Error("get docker manager failed", "err", err)
+		log.Error("get runtime manager failed", "err", err)
 		return err
 	}
 
-	err = utils.CheckModuleFormat(v.Env.Module.ModuleFormat, v.Env.Module.Tags)
+	runtimeSpec, err := utils.RuntimeSpecFromTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags)
 	if err != nil {
 		return err
-	}
-	imageInfo := schema.ImageInfo{
-		Name: hymxUtils.GetTagsValueByDefault("Image-Name", v.Env.Module.Tags, ""),
-		SHA:  hymxUtils.GetTagsValueByDefault("Image-ID", v.Env.Module.Tags, ""),
 	}
 	containerEnv := utils.ContainerEnvFromTags(tags)
-	// start docker container
-	containerInfo, err := dm.CreateContainer(ctx, v.pid, imageInfo, containerEnv)
+	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, runtimeSpec, containerEnv)
 	if err != nil {
 		return err
 	}
-	v.containerInfo = containerInfo
-	log.Debug("create container success", "pid", v.pid, "port", containerInfo.Port, "containerId", containerInfo.ID)
+	v.instanceInfo = instanceInfo
+	log.Debug("create runtime success", "pid", v.pid, "port", instanceInfo.Port, "runtimeId", instanceInfo.ID, "backend", instanceInfo.Backend)
 
-	// start container
-	err = dm.StartContainer(ctx, v.pid)
+	err = runtimeManager.StartInstance(ctx, v.pid)
 	if err != nil {
 		return err
 	}
-	// Wait for container to be ready with health check
+
 	err = v.waitForContainerReady(ctx, 120*time.Second)
 	if err != nil {
-		return fmt.Errorf("container not ready: %v", err)
+		return fmt.Errorf("runtime not ready: %v", err)
 	}
 
 	// create ao process
-	return v.spawn(schema.SpawnRequest{
+	return v.spawn(vmdockerSchema.SpawnRequest{
 		Pid:    v.pid,
 		Owner:  v.Env.Meta.AccId,
 		CuAddr: cuAddr,
@@ -116,7 +111,7 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 }
 
 func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) vmmSchema.Result {
-	res, err := v.apply(schema.ApplyRequest{
+	res, err := v.apply(vmdockerSchema.ApplyRequest{
 		From:   from,
 		Meta:   meta,
 		Params: meta.Params,
@@ -132,44 +127,12 @@ func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) vmmSchema.Result {
 }
 
 func (v *VmDocker) Checkpoint() (string, error) {
-	dm, err := GetDockerManager()
-	if err != nil {
-		log.Error("get docker manager failed", "err", err)
-		return "", err
-	}
-	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, v.Env.Nonce)
-	data, err := dm.Checkpoint(context.Background(), v.pid, checkpointName)
-	if err != nil {
-		log.Error("create checkpoint failed", "err", err, "pid", v.pid)
-		return "", err
-	}
-	log.Info("create checkpoint success", "pid", v.pid, "checkpointName", checkpointName)
-	return data, nil
+	return "", runtimeSchema.ErrNotSupported
 }
 
 func (v *VmDocker) Restore(snapshot string) error {
-	checkpointName := fmt.Sprintf("checkpoint-%s-%d", v.pid, time.Now().Unix())
-	log.Debug("restore process", "pid", v.pid, "name", checkpointName)
-
-	// stop container first
-	dm, err := GetDockerManager()
-	if err != nil {
-		log.Error("get docker manager failed", "err", err)
-		return err
-	}
-	err = dm.StopContainer(context.Background(), v.pid)
-	if err != nil {
-		log.Error("stop container failed", "err", err)
-		return err
-	}
-
-	// start container from checkpoint
-	err = dm.Restore(context.Background(), v.pid, checkpointName, snapshot)
-	if err != nil {
-		log.Error("restore failed", "err", err, "pid", v.pid)
-		return err
-	}
-	return nil
+	_ = snapshot
+	return runtimeSchema.ErrNotSupported
 }
 
 func (v *VmDocker) Close() error {
@@ -180,24 +143,24 @@ func (v *VmDocker) Close() error {
 		// Channel might be full or closed, ignore
 	}
 
-	dm, err := GetDockerManager()
+	runtimeManager, err := runtimemanager.GetRuntimeManager()
 	if err != nil {
-		log.Error("get docker manager failed", "err", err)
+		log.Error("get runtime manager failed", "err", err)
 		return err
 	}
-	return dm.RemoveContainer(context.Background(), v.pid)
+	return runtimeManager.RemoveInstance(context.Background(), v.pid)
 }
 
-// waitForContainerReady waits for the container to be ready by checking health endpoint
+// waitForContainerReady waits for the runtime to be ready by checking health endpoint.
 func (v *VmDocker) waitForContainerReady(ctx context.Context, timeout time.Duration) error {
-	if v.containerInfo == nil {
-		return fmt.Errorf("containerInfo is nil")
+	if v.instanceInfo == nil {
+		return fmt.Errorf("instanceInfo is nil")
 	}
 
 	startTime := time.Now()
-	log.Debug("waiting for container to be ready", "pid", v.pid, "port", v.containerInfo.Port)
+	log.Debug("waiting for runtime to be ready", "pid", v.pid, "port", v.instanceInfo.Port)
 
-	url := fmt.Sprintf("http://%s:%d/vmm/health", schema.AllowHost, v.containerInfo.Port)
+	url := fmt.Sprintf("http://%s:%d/vmm/health", runtimeSchema.AllowHost, v.instanceInfo.Port)
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -210,12 +173,12 @@ func (v *VmDocker) waitForContainerReady(ctx context.Context, timeout time.Durat
 		select {
 		case <-ctx.Done():
 			elapsedTime := time.Since(startTime)
-			log.Debug("container health check timeout", "pid", v.pid, "elapsed_time", elapsedTime)
-			return fmt.Errorf("timeout waiting for container to be ready")
+			log.Debug("runtime health check timeout", "pid", v.pid, "elapsed_time", elapsedTime)
+			return fmt.Errorf("timeout waiting for runtime to be ready")
 		case <-v.closeChan:
 			elapsedTime := time.Since(startTime)
-			log.Debug("container closed during health check", "pid", v.pid, "elapsed_time", elapsedTime)
-			return fmt.Errorf("container was closed")
+			log.Debug("runtime closed during health check", "pid", v.pid, "elapsed_time", elapsedTime)
+			return fmt.Errorf("runtime was closed")
 		case <-ticker.C:
 			req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
 			if err != nil {
@@ -230,23 +193,23 @@ func (v *VmDocker) waitForContainerReady(ctx context.Context, timeout time.Durat
 
 			if resp.StatusCode == http.StatusOK {
 				elapsedTime := time.Since(startTime)
-				log.Debug("container ready", "pid", v.pid, "elapsed_time", elapsedTime)
+				log.Debug("runtime ready", "pid", v.pid, "elapsed_time", elapsedTime)
 				return nil
 			}
 		}
 	}
 }
 
-func (v *VmDocker) spawn(msg schema.SpawnRequest) error {
+func (v *VmDocker) spawn(msg vmdockerSchema.SpawnRequest) error {
 	log.Debug("spawn process", "pid", v.pid)
 
 	// safe check
-	if v.containerInfo == nil {
-		return fmt.Errorf("containerInfo is nil, pid: %s", v.pid)
+	if v.instanceInfo == nil {
+		return fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
 	}
 
 	// POST /vmm/spawn
-	url := fmt.Sprintf("http://%s:%d/vmm/spawn", schema.AllowHost, v.containerInfo.Port)
+	url := fmt.Sprintf("http://%s:%d/vmm/spawn", runtimeSchema.AllowHost, v.instanceInfo.Port)
 
 	// Convert request to JSON
 	jsonData, err := json.Marshal(msg)
@@ -277,15 +240,15 @@ func (v *VmDocker) spawn(msg schema.SpawnRequest) error {
 	return nil
 }
 
-func (v *VmDocker) apply(msg schema.ApplyRequest) (outbox *vmmSchema.Result, err error) {
+func (v *VmDocker) apply(msg vmdockerSchema.ApplyRequest) (outbox *vmmSchema.Result, err error) {
 	// safe check
-	if v.containerInfo == nil {
-		err = fmt.Errorf("containerInfo is nil, pid: %s", v.pid)
+	if v.instanceInfo == nil {
+		err = fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
 		return
 	}
 
 	// POST /vmm/apply
-	url := fmt.Sprintf("http://%s:%d/vmm/apply", schema.AllowHost, v.containerInfo.Port)
+	url := fmt.Sprintf("http://%s:%d/vmm/apply", runtimeSchema.AllowHost, v.instanceInfo.Port)
 	// Convert request to JSON
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
@@ -323,7 +286,7 @@ func (v *VmDocker) apply(msg schema.ApplyRequest) (outbox *vmmSchema.Result, err
 		return
 	}
 
-	var resOutbox schema.OutboxResponse
+	var resOutbox vmdockerSchema.OutboxResponse
 	err = json.Unmarshal(body, &resOutbox)
 	if err != nil {
 		log.Error("unmarshal response failed", "err", err)

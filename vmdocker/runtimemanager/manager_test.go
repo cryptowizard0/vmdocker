@@ -1,4 +1,4 @@
-package vmdocker
+package runtimemanager
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,18 +23,15 @@ func requireDockerIntegration(t *testing.T) {
 	}
 }
 
-// go test -run ^TestDockerManager$
 func TestDockerManager(t *testing.T) {
 	requireDockerIntegration(t)
 	ctx := context.Background()
 
-	// Get DockerManager instance
 	dm, err := GetDockerManager()
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 	waitForEnter("Initialize DockerManager")
 
-	// Test container creation
 	t.Run("CreateContainer", func(t *testing.T) {
 		requireDockerIntegration(t)
 		imageInfo := schema.ImageInfo{
@@ -44,109 +41,96 @@ func TestDockerManager(t *testing.T) {
 		if imageInfo.Name == "" {
 			imageInfo.Name = "chriswebber/docker-golua:v0.0.2"
 		}
-		containerInfo, err := dm.CreateContainer(ctx, "test-container", imageInfo, nil)
+		instanceInfo, err := dm.CreateInstance(ctx, "test-container", schema.RuntimeSpec{
+			Backend: schema.BackendDocker,
+			Image:   imageInfo,
+		}, nil)
 		if !assert.NoError(t, err) {
 			return
 		}
-		if !assert.NotNil(t, containerInfo) {
+		if !assert.NotNil(t, instanceInfo) {
 			return
 		}
-		assert.Equal(t, "test-container", containerInfo.Name)
-		assert.Equal(t, "created", containerInfo.Status)
+		assert.Equal(t, "test-container", instanceInfo.Name)
+		assert.Equal(t, "created", instanceInfo.Status)
 		waitForEnter("Create Container")
 	})
 
-	// Test get container info
 	t.Run("GetContainer", func(t *testing.T) {
 		requireDockerIntegration(t)
-		containerInfo, err := dm.GetContainer("test-container")
+		instanceInfo, err := dm.GetInstance("test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
-		if !assert.NotNil(t, containerInfo) {
+		if !assert.NotNil(t, instanceInfo) {
 			return
 		}
-		assert.Equal(t, "test-container", containerInfo.Name)
+		assert.Equal(t, "test-container", instanceInfo.Name)
 		waitForEnter("Get Container Info")
 	})
 
-	// Test start container
 	t.Run("StartContainer", func(t *testing.T) {
 		requireDockerIntegration(t)
-		err := dm.StartContainer(ctx, "test-container")
+		err := dm.StartInstance(ctx, "test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
 
-		// Verify container status
-		containerInfo, err := dm.GetContainer("test-container")
+		instanceInfo, err := dm.GetInstance("test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
-		assert.Equal(t, "running", containerInfo.Status)
+		assert.Equal(t, "running", instanceInfo.Status)
 		waitForEnter("Start Container")
-
-		// Wait for container to fully start
 		time.Sleep(2 * time.Second)
 	})
 
-	// Test stop container
 	t.Run("StopContainer", func(t *testing.T) {
 		requireDockerIntegration(t)
-		err := dm.StopContainer(ctx, "test-container")
+		err := dm.StopInstance(ctx, "test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
 
-		// Verify container status
-		containerInfo, err := dm.GetContainer("test-container")
+		instanceInfo, err := dm.GetInstance("test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
-		assert.Equal(t, "stopped", containerInfo.Status)
+		assert.Equal(t, "stopped", instanceInfo.Status)
 		waitForEnter("Stop Container")
 	})
 
-	// Test remove container
 	t.Run("RemoveContainer", func(t *testing.T) {
 		requireDockerIntegration(t)
-		err := dm.RemoveContainer(ctx, "test-container")
+		err := dm.RemoveInstance(ctx, "test-container")
 		if !assert.NoError(t, err) {
 			return
 		}
 
-		// Verify container is removed
-		_, err = dm.GetContainer("test-container")
+		_, err = dm.GetInstance("test-container")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "container not found")
+		assert.Contains(t, err.Error(), "instance not found")
 		waitForEnter("Remove Container")
 	})
 
-	// Test error cases
 	t.Run("ErrorCases", func(t *testing.T) {
 		requireDockerIntegration(t)
-		// Test getting non-existent container
-		_, err := dm.GetContainer("non-existent")
+		_, err := dm.GetInstance("non-existent")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "container not found")
+		assert.Contains(t, err.Error(), "instance not found")
 
-		// Test stopping non-existent container
-		err = dm.StopContainer(ctx, "non-existent")
+		err = dm.StopInstance(ctx, "non-existent")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "container not found")
+		assert.Contains(t, err.Error(), "instance not found")
 
-		// Test removing non-existent container
-		err = dm.RemoveContainer(ctx, "non-existent")
+		err = dm.RemoveInstance(ctx, "non-existent")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "container not found")
+		assert.Contains(t, err.Error(), "instance not found")
 		waitForEnter("Error Test Cases")
 	})
 
-	// Test checkpoint and restore functionality
-	// go test -run ^TestDockerManager$/^CheckpointAndRestore$
-	t.Run("CheckpointAndRestore", func(t *testing.T) {
+	t.Run("CheckpointAndRestoreNotSupported", func(t *testing.T) {
 		requireDockerIntegration(t)
-		// Create and start a container for testing
 		imageInfo := schema.ImageInfo{
 			Name: os.Getenv("VMDOCKER_TEST_IMAGE"),
 			SHA:  os.Getenv("VMDOCKER_TEST_IMAGE_SHA"),
@@ -154,70 +138,42 @@ func TestDockerManager(t *testing.T) {
 		if imageInfo.Name == "" {
 			imageInfo.Name = "chriswebber/docker-golua:v0.0.2"
 		}
-		containerInfo, err := dm.CreateContainer(ctx, "checkpoint-test", imageInfo, nil)
+		_, err := dm.CreateInstance(ctx, "checkpoint-test", schema.RuntimeSpec{
+			Backend: schema.BackendDocker,
+			Image:   imageInfo,
+		}, nil)
 		if !assert.NoError(t, err) {
 			return
 		}
-		if !assert.NotNil(t, containerInfo) {
-			return
-		}
-
-		err = dm.StartContainer(ctx, "checkpoint-test")
+		err = dm.StartInstance(ctx, "checkpoint-test")
 		if !assert.NoError(t, err) {
 			return
 		}
-		time.Sleep(2 * time.Second) // Wait for container to fully start
-		waitForEnter("Container Started for Checkpoint Test")
-
-		// Create a checkpoint of the running container
-		zipdata, err := dm.Checkpoint(ctx, "checkpoint-test", "test-checkpoint")
-		if !assert.NoError(t, err) {
-			return
-		}
-		waitForEnter("Checkpoint Created")
-
-		// Stop the container to simulate a shutdown
-		err = dm.StopContainer(ctx, "checkpoint-test")
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		// Restore the container from checkpoint
-		err = dm.Restore(ctx, "checkpoint-test", "test-checkpoint", zipdata)
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		// Verify container status after restore
-		containerInfo, err = dm.GetContainer("checkpoint-test")
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		// Cleanup test resources
-		err = dm.RemoveContainer(ctx, "checkpoint-test")
+		err = dm.StopInstance(ctx, "checkpoint-test")
 		assert.NoError(t, err)
 
+		_, err = dm.Checkpoint(ctx, "checkpoint-test", "test-checkpoint")
+		assert.ErrorIs(t, err, schema.ErrNotSupported)
+		err = dm.Restore(ctx, "checkpoint-test", "test-checkpoint", "snapshot")
+		assert.ErrorIs(t, err, schema.ErrNotSupported)
+
+		err = dm.RemoveInstance(ctx, "checkpoint-test")
+		assert.NoError(t, err)
 	})
 }
 
-// go test -run ^TestEnsureImageExists$
 func TestEnsureImageExists(t *testing.T) {
 	requireDockerIntegration(t)
 	ctx := context.Background()
 
-	// Get DockerManager instance
 	dm, err := GetDockerManager()
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 
-	// Convert to concrete type to access ensureImageExists method
 	dockerManager := dm.(*DockerManager)
 
-	// Test case 1: Ensure image exists with valid image (should work with existing images)
 	t.Run("EnsureImageExistsWithValidImage", func(t *testing.T) {
 		requireDockerIntegration(t)
-		// Use a lightweight, commonly available image for testing
 		imageInfo := schema.ImageInfo{
 			Name: os.Getenv("VMDOCKER_TEST_IMAGE"),
 			SHA:  os.Getenv("VMDOCKER_TEST_IMAGE_SHA"),
@@ -231,12 +187,11 @@ func TestEnsureImageExists(t *testing.T) {
 		waitForEnter("Ensure Image Exists - Valid Image")
 	})
 
-	// Test case 2: Ensure image exists with invalid SHA (should fail verification)
 	t.Run("EnsureImageExistsWithInvalidSHA", func(t *testing.T) {
 		requireDockerIntegration(t)
 		imageInfo := schema.ImageInfo{
 			Name: "alpine:latest",
-			SHA:  "sha256:invalid-sha-that-will-not-match", // Invalid SHA should fail
+			SHA:  "sha256:invalid-sha-that-will-not-match",
 		}
 
 		err := dockerManager.ensureImageExists(ctx, imageInfo)
@@ -246,23 +201,18 @@ func TestEnsureImageExists(t *testing.T) {
 	})
 }
 
-// go test -run ^TestVerifyImageSHA$
 func TestVerifyImageSHA(t *testing.T) {
 	requireDockerIntegration(t)
 	ctx := context.Background()
 
-	// Get DockerManager instance
 	dm, err := GetDockerManager()
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 
-	// Convert to concrete type to access verifyImageSHA method
 	dockerManager := dm.(*DockerManager)
 
-	// Test case 1: Verify SHA with existing image (alpine:latest)
 	t.Run("VerifyImageSHAWithExistingImage", func(t *testing.T) {
 		requireDockerIntegration(t)
-		// First ensure the image exists
 		imageInfo := schema.ImageInfo{
 			Name: os.Getenv("VMDOCKER_TEST_IMAGE"),
 			SHA:  os.Getenv("VMDOCKER_TEST_IMAGE_SHA"),
@@ -273,7 +223,6 @@ func TestVerifyImageSHA(t *testing.T) {
 		err := dockerManager.ensureImageExists(ctx, imageInfo)
 		assert.NoError(t, err)
 
-		// Now test SHA verification with a dummy SHA (should fail)
 		imageInfo.SHA = "sha256:dummy-sha-that-will-not-match"
 		err = dockerManager.verifyImageSHA(ctx, imageInfo)
 		assert.Error(t, err)
@@ -281,7 +230,6 @@ func TestVerifyImageSHA(t *testing.T) {
 		waitForEnter("Verify Image SHA - Existing Image with Wrong SHA")
 	})
 
-	// Test case 2: Verify SHA with non-existent image (should fail)
 	t.Run("VerifyImageSHAWithNonExistentImage", func(t *testing.T) {
 		requireDockerIntegration(t)
 		imageInfo := schema.ImageInfo{
@@ -296,47 +244,33 @@ func TestVerifyImageSHA(t *testing.T) {
 	})
 }
 
-// go test -run ^TestImageInspectID$
 func TestImageInspectID(t *testing.T) {
 	requireDockerIntegration(t)
 	ctx := context.Background()
 
-	// Get DockerManager instance
 	dm, err := GetDockerManager()
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 
-	// Convert to concrete type to access Docker client
 	dockerManager := dm.(*DockerManager)
 
-	// Test with alpine:latest image
 	t.Run("GetAlpineImageID", func(t *testing.T) {
 		requireDockerIntegration(t)
-		// First ensure the image exists
 		imageInfo := schema.ImageInfo{
 			Name: "chriswebber/docker-golua:latest",
 			SHA:  "b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b",
 		}
-		// err := dockerManager.ensureImageExists(ctx, imageInfo)
-		// assert.NoError(t, err)
 
-		// Get image inspect information
 		inspect, err := dockerManager.cli.ImageInspect(ctx, imageInfo.Name)
 		assert.NoError(t, err)
-
-		// Print the image ID
 		t.Logf("Image Name: %s", imageInfo.Name)
 		t.Logf("Image ID: %s", inspect.ID)
 		t.Logf("Image Size: %d bytes", inspect.Size)
 		t.Logf("Image Created: %s", inspect.Created)
 		t.Logf("Image Architecture: %s", inspect.Architecture)
 		t.Logf("Image OS: %s", inspect.Os)
-
-		// Verify that ID is not empty
 		assert.NotEmpty(t, inspect.ID)
-		// Verify that ID starts with sha256:
 		assert.True(t, strings.HasPrefix(inspect.ID, "sha256:"))
-
 		waitForEnter("Alpine Image Inspect ID")
 	})
 }
