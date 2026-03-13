@@ -62,6 +62,24 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	if !strings.Contains(log, "-e OPENCLAW_CONFIG_PATH="+filepath.Join(expectedWorkspace, ".openclaw", "openclaw.json")) {
 		t.Fatalf("expected sandbox exec to inject OPENCLAW_CONFIG_PATH, got:\n%s", log)
 	}
+	if !strings.Contains(log, "-e OPENCLAW_AGENT_WORKSPACE="+filepath.Join(expectedWorkspace, ".openclaw", "workspace")) {
+		t.Fatalf("expected sandbox exec to inject OPENCLAW_AGENT_WORKSPACE, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e HOME="+filepath.Join(expectedWorkspace, ".home")) {
+		t.Fatalf("expected sandbox exec to inject HOME, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e TMPDIR="+filepath.Join(expectedWorkspace, ".tmp")) {
+		t.Fatalf("expected sandbox exec to inject TMPDIR, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e XDG_CONFIG_HOME="+filepath.Join(expectedWorkspace, ".xdg", "config")) {
+		t.Fatalf("expected sandbox exec to inject XDG_CONFIG_HOME, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e XDG_CACHE_HOME="+filepath.Join(expectedWorkspace, ".xdg", "cache")) {
+		t.Fatalf("expected sandbox exec to inject XDG_CACHE_HOME, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e XDG_STATE_HOME="+filepath.Join(expectedWorkspace, ".xdg", "state")) {
+		t.Fatalf("expected sandbox exec to inject XDG_STATE_HOME, got:\n%s", log)
+	}
 	if !strings.Contains(log, "start-vmdocker-agent.sh") {
 		t.Fatalf("expected start-vmdocker-agent.sh in log, got:\n%s", log)
 	}
@@ -265,6 +283,12 @@ func TestAppendSandboxPersistenceEnv(t *testing.T) {
 		"RUNTIME_TYPE=openclaw",
 		"OPENCLAW_STATE_DIR=/tmp/workspace/sandbox_workspace/pid-1/.openclaw",
 		"OPENCLAW_CONFIG_PATH=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/openclaw.json",
+		"OPENCLAW_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/workspace",
+		"HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
+		"TMPDIR=/tmp/workspace/sandbox_workspace/pid-1/.tmp",
+		"XDG_CONFIG_HOME=/tmp/workspace/sandbox_workspace/pid-1/.xdg/config",
+		"XDG_CACHE_HOME=/tmp/workspace/sandbox_workspace/pid-1/.xdg/cache",
+		"XDG_STATE_HOME=/tmp/workspace/sandbox_workspace/pid-1/.xdg/state",
 	}
 	if len(env) != len(expected) {
 		t.Fatalf("env length = %d, want %d (%v)", len(env), len(expected), env)
@@ -273,6 +297,44 @@ func TestAppendSandboxPersistenceEnv(t *testing.T) {
 		if env[i] != item {
 			t.Fatalf("env[%d] = %q, want %q (full=%v)", i, env[i], item, env)
 		}
+	}
+}
+
+func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
+	workspace := "/tmp/workspace/sandbox_workspace/pid-1"
+	env := appendSandboxPersistenceEnv([]string{
+		"HOME=/custom/home",
+		"TMPDIR=/custom/tmp",
+		"XDG_CONFIG_HOME=/custom/xdg/config",
+		"XDG_CACHE_HOME=/custom/xdg/cache",
+		"XDG_STATE_HOME=/custom/xdg/state",
+		"OPENCLAW_AGENT_WORKSPACE=/custom/agent-workspace",
+	}, workspace)
+	full := strings.Join(env, "\n")
+	for _, item := range []string{
+		"HOME=/custom/home",
+		"TMPDIR=/custom/tmp",
+		"XDG_CONFIG_HOME=/custom/xdg/config",
+		"XDG_CACHE_HOME=/custom/xdg/cache",
+		"XDG_STATE_HOME=/custom/xdg/state",
+		"OPENCLAW_AGENT_WORKSPACE=/custom/agent-workspace",
+	} {
+		if !strings.Contains(full, item) {
+			t.Fatalf("expected explicit env %q in %v", item, env)
+		}
+	}
+	if strings.Contains(full, workspace+"/.home") {
+		t.Fatalf("unexpected default HOME in %v", env)
+	}
+}
+
+func TestAppendSandboxPersistenceEnvDerivesConfigFromExplicitStateDir(t *testing.T) {
+	env := appendSandboxPersistenceEnv([]string{
+		"OPENCLAW_STATE_DIR=/custom/state",
+	}, "/tmp/workspace/sandbox_workspace/pid-1")
+	full := strings.Join(env, "\n")
+	if !strings.Contains(full, "OPENCLAW_CONFIG_PATH=/custom/state/openclaw.json") {
+		t.Fatalf("expected config path to derive from explicit state dir, got %v", env)
 	}
 }
 
