@@ -17,6 +17,11 @@ import (
 const (
 	defaultSandboxAgent    = "shell"
 	runtimeContainerPrefix = "runtime_"
+
+	openclawStateDirName  = ".openclaw"
+	openclawConfigFile    = "openclaw.json"
+	envOpenclawStateDir   = "OPENCLAW_STATE_DIR"
+	envOpenclawConfigPath = "OPENCLAW_CONFIG_PATH"
 )
 
 type SandboxManager struct {
@@ -30,6 +35,7 @@ type SandboxManager struct {
 type sandboxLaunchSpec struct {
 	runtimeSpec schema.RuntimeSpec
 	runtimeEnv  []string
+	workspace   string
 }
 
 func newSandboxManager() (*SandboxManager, error) {
@@ -107,7 +113,11 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 		Agent:    agent,
 	}
 	sm.instances[pid] = instance
-	sm.launchSpecs[pid] = sandboxLaunchSpec{runtimeSpec: runtimeSpec, runtimeEnv: append([]string(nil), runtimeEnv...)}
+	sm.launchSpecs[pid] = sandboxLaunchSpec{
+		runtimeSpec: runtimeSpec,
+		runtimeEnv:  append([]string(nil), runtimeEnv...),
+		workspace:   workspace,
+	}
 	log.Info("sandbox runtime instance created", "pid", pid, "sandbox_name", sandboxName, "port", port)
 	return instance, nil
 }
@@ -151,10 +161,10 @@ func (sm *SandboxManager) StartInstance(ctx context.Context, pid string) error {
 		return fmt.Errorf("sandbox launch spec not found: %s", pid)
 	}
 
-	return sm.startSandboxRuntime(ctx, pid, launchSpec.runtimeSpec, launchSpec.runtimeEnv)
+	return sm.startSandboxRuntime(ctx, pid, launchSpec.runtimeSpec, launchSpec.runtimeEnv, launchSpec.workspace)
 }
 
-func (sm *SandboxManager) startSandboxRuntime(ctx context.Context, pid string, runtimeSpec schema.RuntimeSpec, runtimeEnv []string) error {
+func (sm *SandboxManager) startSandboxRuntime(ctx context.Context, pid string, runtimeSpec schema.RuntimeSpec, runtimeEnv []string, workspace string) error {
 	instance, err := sm.GetInstance(pid)
 	if err != nil {
 		return err
@@ -166,7 +176,7 @@ func (sm *SandboxManager) startSandboxRuntime(ctx context.Context, pid string, r
 	}
 	log.Debug("executing sandbox runtime start command", "pid", pid, "sandbox_name", instance.ID, "command", command, "env_count", len(runtimeEnv))
 
-	if _, err := sm.ExecInstance(ctx, pid, runtimeEnv, command); err != nil {
+	if _, err := sm.ExecInstance(ctx, pid, appendSandboxPersistenceEnv(runtimeEnv, workspace), command); err != nil {
 		return err
 	}
 
@@ -333,6 +343,30 @@ func (sm *SandboxManager) ExecInstance(ctx context.Context, pid string, env []st
 
 func buildSandboxStartCommand() string {
 	return "start-vmdocker-agent.sh >/tmp/vmdocker-agent.log 2>&1 &"
+}
+
+func appendSandboxPersistenceEnv(runtimeEnv []string, workspace string) []string {
+	env := append([]string(nil), runtimeEnv...)
+	if workspace == "" || hasEnvKey(env, envOpenclawStateDir) {
+		return env
+	}
+
+	stateDir := filepath.Join(workspace, openclawStateDirName)
+	env = append(env, envOpenclawStateDir+"="+stateDir)
+	if !hasEnvKey(env, envOpenclawConfigPath) {
+		env = append(env, envOpenclawConfigPath+"="+filepath.Join(stateDir, openclawConfigFile))
+	}
+	return env
+}
+
+func hasEnvKey(env []string, key string) bool {
+	prefix := key + "="
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func shellEscape(value string) string {
