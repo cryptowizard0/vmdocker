@@ -68,13 +68,10 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 		sandboxName = defaultSandboxName(pid)
 	}
 
-	workspace := runtimeSpec.Sandbox.Workspace
-	if workspace == "" {
-		workspace, err = defaultSandboxWorkspace(pid)
-		if err != nil {
-			sm.portAllocator.Release(port)
-			return nil, err
-		}
+	workspace, err := resolveSandboxWorkspace(pid, runtimeSpec.Sandbox.Workspace)
+	if err != nil {
+		sm.portAllocator.Release(port)
+		return nil, err
 	}
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		sm.portAllocator.Release(port)
@@ -115,12 +112,15 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	return instance, nil
 }
 
-func defaultSandboxWorkspace(pid string) (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
+func resolveSandboxWorkspace(pid, root string) (string, error) {
+	var err error
+	if root == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
 	}
-	return filepath.Join(cwd, "sandbox_workspace", pid), nil
+	return filepath.Join(root, "sandbox_workspace", pid), nil
 }
 
 func defaultSandboxName(pid string) string {

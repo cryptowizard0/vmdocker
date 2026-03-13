@@ -45,13 +45,18 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 		t.Fatalf("StartInstance failed: %v", err)
 	}
 
+	expectedWorkspace := filepath.Join(tempDir, "workspace", "sandbox_workspace", "pid-1")
+	if _, err := os.Stat(expectedWorkspace); err != nil {
+		t.Fatalf("expected workspace directory to exist: %v", err)
+	}
+
 	raw, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read fake docker log failed: %v", err)
 	}
 	log := string(raw)
 
-	if !strings.Contains(log, "sandbox create --name runtime-pid-1 --pull-template missing -t chriswebber/docker-openclaw-sandbox:test shell "+filepath.Join(tempDir, "workspace")) {
+	if !strings.Contains(log, "sandbox create --name runtime-pid-1 --pull-template missing -t chriswebber/docker-openclaw-sandbox:test shell "+expectedWorkspace) {
 		t.Fatalf("expected sandbox create command in log, got:\n%s", log)
 	}
 	if !strings.Contains(log, "image inspect chriswebber/docker-openclaw-sandbox:test") {
@@ -99,6 +104,11 @@ func TestSandboxManagerCreateInstancePullsAndVerifiesMissingTemplate(t *testing.
 
 	if _, err := sm.CreateInstance(context.Background(), "pid-2", spec, nil); err != nil {
 		t.Fatalf("CreateInstance failed: %v", err)
+	}
+
+	expectedWorkspace := filepath.Join(tempDir, "workspace", "sandbox_workspace", "pid-2")
+	if _, err := os.Stat(expectedWorkspace); err != nil {
+		t.Fatalf("expected workspace directory to exist: %v", err)
 	}
 
 	raw, err := os.ReadFile(logPath)
