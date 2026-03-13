@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"os"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	hySchema "github.com/hymatrix/hymx/schema"
@@ -69,9 +68,9 @@ func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.Run
 			SHA:  utils.GetTagsValueByDefault("Image-ID", tags, ""),
 		},
 		Sandbox: schema.SandboxSpec{
-			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "openclaw"),
-			Workspace: utils.GetTagsValueByDefault(schema.SandboxWorkspaceTag, tags, os.Getenv("PWD")),
-			Network:   utils.GetTagsValueByDefault(schema.SandboxNetworkTag, tags, "restricted"),
+			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "shell"),
+			Workspace: utils.GetTagsValueByDefault(schema.SandboxWorkspaceTag, tags, ""),
+			Network:   utils.GetTagsValueByDefault(schema.SandboxNetworkTag, tags, ""),
 			Name:      utils.GetTagsValueByDefault(schema.SandboxNameTag, tags, ""),
 			Command:   utils.GetTagsValueByDefault(schema.SandboxCommandTag, tags, ""),
 		},
@@ -83,8 +82,8 @@ func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.Run
 			return schema.RuntimeSpec{}, errors.New("Image-ID is empty")
 		}
 	case schema.BackendSandbox:
-		if spec.Sandbox.Workspace == "" {
-			return schema.RuntimeSpec{}, errors.New("Sandbox-Workspace is empty")
+		if spec.Image.SHA == "" {
+			return schema.RuntimeSpec{}, errors.New("Image-ID is empty")
 		}
 	default:
 		return schema.RuntimeSpec{}, errors.New("unsupported runtime backend: " + spec.Backend)

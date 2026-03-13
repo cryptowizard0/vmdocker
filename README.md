@@ -230,7 +230,7 @@ Every VMDocker module **MUST** include the following tags:
 | `Image-Name` | Docker image name and tag | `chriswebber/docker-golua:v0.0.2` |
 | `Image-ID` | Docker image SHA256 digest | `sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b` |
 
-> ⚠️ **Important**: Both `Image-Name` and `Image-ID` tags are mandatory. Missing either tag will cause module validation to fail.
+> ⚠️ **Important**: Both `Image-Name` and `Image-ID` tags are mandatory for both `docker` and `sandbox` backends. Missing either tag will cause module validation to fail before runtime creation.
 
 #### **Create Your Own Module**
 
@@ -242,26 +242,42 @@ Edit the `examples/module.go` file and fill in your module information:
 
 ```go
 // examples/module.go
+sandboxImageName := os.Getenv("VMDOCKER_SANDBOX_IMAGE_NAME")
+sandboxImageID := os.Getenv("VMDOCKER_SANDBOX_IMAGE_ID")
+
 item, _ := s.GenerateModule([]byte{}, schema.Module{
-    Base:         schema.DefaultBaseModule,
-    ModuleFormat: "web.vmdocker-golua-ao.v0.0.1",  // Must start with "web.vmdocker-"
-    Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-golua:v0.0.4"},
-			{Name: "Image-ID", Value: "sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f"},
-		},
+	Base:         schema.DefaultBaseModule,
+	ModuleFormat: vmdockerSchema.ModuleFormat,
+	Tags: []arSchema.Tag{
+		{Name: "Runtime-Backend", Value: "sandbox"},
+		{Name: "Image-Name", Value: sandboxImageName},
+		{Name: "Image-ID", Value: sandboxImageID},
+		{Name: "Sandbox-Agent", Value: "shell"},
+	},
 })
 ```
+
+The real example reads these values from the environment and stops with a clear message if they are missing.
 
 **Step 2: Generate Module File**
 
 Run the command in the `examples` directory to generate the module configuration file:
 
 ```bash
+export VMDOCKER_SANDBOX_IMAGE_NAME=chriswebber/docker-openclaw-sandbox:latest
+export VMDOCKER_SANDBOX_IMAGE_ID="$(docker image inspect "$VMDOCKER_SANDBOX_IMAGE_NAME" --format='{{.Id}}')"
+
 cd examples
 go run ./ module
 ```
 
 This will generate a `mod-xxxx.json` file containing your module configuration.
+
+If you want to run the OpenClaw example afterwards, export the generated module ID first:
+
+```bash
+export OPENCLAW_MODULE_ID=<generated-module-id>
+```
 
 **Step 3: Deploy Module**
 
@@ -288,13 +304,14 @@ VMDocker automatically validates modules using the `checkModule` function:
 
 1. ✅ **ModuleFormat Check**: Verifies format starts with `web.vmdocker-`
 2. ✅ **Image-Name Check**: Ensures `Image-Name` tag exists and is not empty
-3. ✅ **Image-ID Check**: Ensures `Image-ID` tag exists and is not empty
+3. ✅ **Image-ID Check**: Ensures `Image-ID` tag exists and is not empty for both backends
+4. ✅ **Sandbox-Workspace Check**: Ensures `Sandbox-Workspace` is present when `Runtime-Backend=sandbox`
 
 If any validation fails, the module will be rejected and container creation will fail.
 
 #### **Getting Image SHA256**
 
-To obtain the correct `Image-ID` value:
+To obtain the correct `Image-ID` value for a regular Docker image:
 
 ```bash
 # Pull the image
@@ -304,6 +321,21 @@ docker pull chriswebber/docker-golua:v0.0.4
 docker inspect chriswebber/docker-golua:v0.0.4 --format='{{.Id}}'
 # Output: sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f
 ```
+
+To obtain the correct `Image-ID` value for a sandbox template image, build it from the `vmdocker_agent` repository:
+
+```bash
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker_agent
+
+# Build or pull the sandbox template image first
+docker build -f Dockerfile.sandbox -t chriswebber/docker-openclaw-sandbox:latest .
+
+# Get the template image ID used by VMDocker's sandbox verification
+docker image inspect chriswebber/docker-openclaw-sandbox:latest --format='{{.Id}}'
+# Output: sha256:...
+```
+
+For sandbox modules, `Image-Name` and `Image-ID` must match the sandbox template image passed to `docker sandbox create -t ...`.
 
 ## 🔧 Module Setup
 

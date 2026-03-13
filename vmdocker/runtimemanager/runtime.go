@@ -5,7 +5,10 @@ import (
 	"sync"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
+	"github.com/hymatrix/hymx/common"
 )
+
+var log = common.NewLog("vmdocker-runtime")
 
 type IRuntimeManager interface {
 	CreateInstance(ctx context.Context, pid string, runtimeSpec schema.RuntimeSpec, runtimeEnv []string) (*schema.InstanceInfo, error)
@@ -13,6 +16,7 @@ type IRuntimeManager interface {
 	RemoveInstance(ctx context.Context, pid string) error
 	StartInstance(ctx context.Context, pid string) error
 	StopInstance(ctx context.Context, pid string) error
+	ExecInstance(ctx context.Context, pid string, env []string, command string) (string, error)
 	Checkpoint(ctx context.Context, pid, checkpointName string) (string, error)
 	Restore(ctx context.Context, pid, checkpointName, snapshot string) error
 }

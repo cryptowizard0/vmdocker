@@ -44,14 +44,17 @@ func newDockerManager() (*DockerManager, error) {
 }
 
 func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema.ImageInfo) error {
+	log.Debug("ensure docker image exists", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
 	_, err := dm.cli.ImageInspect(ctx, imageInfo.Name)
 	if err == nil {
+		log.Debug("docker image already present locally", "image", imageInfo.Name)
 		if imageInfo.SHA != "" {
 			return dm.verifyImageSHA(ctx, imageInfo)
 		}
 		return nil
 	}
 
+	log.Info("pulling docker image", "image", imageInfo.Name)
 	reader, err := dm.cli.ImagePull(ctx, imageInfo.Name, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to pull image %s: %v", imageInfo.Name, err)
@@ -70,6 +73,7 @@ func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema
 }
 
 func (dm *DockerManager) verifyImageSHA(ctx context.Context, imageInfo schema.ImageInfo) error {
+	log.Debug("verifying docker image sha", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
 	inspect, err := dm.cli.ImageInspect(ctx, imageInfo.Name)
 	if err != nil {
 		return fmt.Errorf("failed to inspect image %s: %v", imageInfo.Name, err)
@@ -82,6 +86,7 @@ func (dm *DockerManager) verifyImageSHA(ctx context.Context, imageInfo schema.Im
 	}
 
 	if inspect.ID == imageInfo.SHA {
+		log.Debug("docker image sha matched local image id", "image", imageInfo.Name, "image_id", inspect.ID)
 		return nil
 	}
 
@@ -93,6 +98,7 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
 
+	log.Info("creating docker runtime instance", "pid", pid, "image", runtimeSpec.Image.Name, "env_count", len(runtimeEnv))
 	if err := dm.ensureImageExists(ctx, runtimeSpec.Image); err != nil {
 		return nil, fmt.Errorf("failed to ensure image exists: %v", err)
 	}
@@ -166,6 +172,7 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 		dm.portAllocator.Release(port)
 		return nil, err
 	}
+	log.Info("docker runtime instance created", "pid", pid, "container_id", resp.ID, "port", port)
 
 	instanceInfo := &schema.InstanceInfo{
 		ID:       resp.ID,
@@ -194,6 +201,7 @@ func (dm *DockerManager) RemoveInstance(ctx context.Context, pid string) error {
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
 
+	log.Info("removing docker runtime instance", "pid", pid)
 	instance, exists := dm.instances[pid]
 	if !exists {
 		return fmt.Errorf("instance not found: %s", pid)
@@ -202,12 +210,14 @@ func (dm *DockerManager) RemoveInstance(ctx context.Context, pid string) error {
 	if err := dm.cli.ContainerRemove(ctx, instance.ID, container.RemoveOptions{Force: true}); err != nil {
 		return err
 	}
+	log.Info("docker runtime instance removed", "pid", pid, "container_id", instance.ID)
 	dm.portAllocator.Release(instance.Port)
 	delete(dm.instances, pid)
 	return nil
 }
 
 func (dm *DockerManager) StartInstance(ctx context.Context, pid string) error {
+	log.Info("starting docker runtime instance", "pid", pid)
 	instance, err := dm.GetInstance(pid)
 	if err != nil {
 		return err
@@ -216,10 +226,12 @@ func (dm *DockerManager) StartInstance(ctx context.Context, pid string) error {
 		return err
 	}
 	instance.Status = "running"
+	log.Info("docker runtime instance started", "pid", pid, "container_id", instance.ID, "port", instance.Port)
 	return nil
 }
 
 func (dm *DockerManager) StopInstance(ctx context.Context, pid string) error {
+	log.Info("stopping docker runtime instance", "pid", pid)
 	instance, err := dm.GetInstance(pid)
 	if err != nil {
 		return err
@@ -229,7 +241,12 @@ func (dm *DockerManager) StopInstance(ctx context.Context, pid string) error {
 		return err
 	}
 	instance.Status = "stopped"
+	log.Info("docker runtime instance stopped", "pid", pid, "container_id", instance.ID)
 	return nil
+}
+
+func (dm *DockerManager) ExecInstance(context.Context, string, []string, string) (string, error) {
+	return "", schema.ErrNotSupported
 }
 
 func (dm *DockerManager) Checkpoint(context.Context, string, string) (string, error) {
