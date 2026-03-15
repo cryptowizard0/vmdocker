@@ -59,6 +59,9 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	if !strings.Contains(log, "-e OPENCLAW_STATE_DIR="+filepath.Join(expectedWorkspace, ".openclaw")) {
 		t.Fatalf("expected sandbox exec to inject OPENCLAW_STATE_DIR, got:\n%s", log)
 	}
+	if !strings.Contains(log, "-e OPENCLAW_HOME="+expectedWorkspace) {
+		t.Fatalf("expected sandbox exec to inject OPENCLAW_HOME, got:\n%s", log)
+	}
 	if !strings.Contains(log, "-e OPENCLAW_CONFIG_PATH="+filepath.Join(expectedWorkspace, ".openclaw", "openclaw.json")) {
 		t.Fatalf("expected sandbox exec to inject OPENCLAW_CONFIG_PATH, got:\n%s", log)
 	}
@@ -82,6 +85,9 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	}
 	if !strings.Contains(log, "start-vmdocker-agent.sh") {
 		t.Fatalf("expected start-vmdocker-agent.sh in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "mkdir -p \"${TMPDIR:-/tmp}\" && start-vmdocker-agent.sh >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &") {
+		t.Fatalf("expected sandbox start command to precreate TMPDIR, got:\n%s", log)
 	}
 	if strings.Contains(log, "docker run") {
 		t.Fatalf("unexpected nested docker run in log:\n%s", log)
@@ -282,6 +288,7 @@ func TestAppendSandboxPersistenceEnv(t *testing.T) {
 	expected := []string{
 		"RUNTIME_TYPE=openclaw",
 		"OPENCLAW_STATE_DIR=/tmp/workspace/sandbox_workspace/pid-1/.openclaw",
+		"OPENCLAW_HOME=/tmp/workspace/sandbox_workspace/pid-1",
 		"OPENCLAW_CONFIG_PATH=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/openclaw.json",
 		"OPENCLAW_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/workspace",
 		"HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
@@ -303,6 +310,7 @@ func TestAppendSandboxPersistenceEnv(t *testing.T) {
 func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 	workspace := "/tmp/workspace/sandbox_workspace/pid-1"
 	env := appendSandboxPersistenceEnv([]string{
+		"OPENCLAW_HOME=/custom/openclaw-home",
 		"HOME=/custom/home",
 		"TMPDIR=/custom/tmp",
 		"XDG_CONFIG_HOME=/custom/xdg/config",
@@ -312,6 +320,7 @@ func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 	}, workspace)
 	full := strings.Join(env, "\n")
 	for _, item := range []string{
+		"OPENCLAW_HOME=/custom/openclaw-home",
 		"HOME=/custom/home",
 		"TMPDIR=/custom/tmp",
 		"XDG_CONFIG_HOME=/custom/xdg/config",
@@ -325,6 +334,9 @@ func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 	}
 	if strings.Contains(full, workspace+"/.home") {
 		t.Fatalf("unexpected default HOME in %v", env)
+	}
+	if strings.Contains(full, "OPENCLAW_HOME="+workspace) {
+		t.Fatalf("unexpected default OPENCLAW_HOME in %v", env)
 	}
 }
 

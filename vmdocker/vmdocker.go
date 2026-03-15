@@ -22,6 +22,8 @@ import (
 
 var log = common.NewLog("vmdocker")
 
+const defaultRuntimeReadyTimeout = 10 * time.Minute
+
 func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 	vmd, err := New(env, env.Process.Scheduler, env.Process.Tags)
 	if err != nil {
@@ -103,7 +105,7 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	}
 	log.Info("runtime instance start requested", "pid", v.pid, "runtime_id", instanceInfo.ID)
 
-	err = v.waitForContainerReady(ctx, 5*time.Minute)
+	err = v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout)
 	if err != nil {
 		log.Error("runtime readiness check failed", "pid", v.pid, "runtime_id", instanceInfo.ID, "backend", instanceInfo.Backend, "err", err)
 		return fmt.Errorf("runtime not ready: %v", err)

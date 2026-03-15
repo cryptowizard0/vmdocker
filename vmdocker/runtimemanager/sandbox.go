@@ -24,6 +24,7 @@ const (
 	sandboxHomeDirName    = ".home"
 	sandboxTmpDirName     = ".tmp"
 	sandboxXDGDirName     = ".xdg"
+	envOpenclawHome       = "OPENCLAW_HOME"
 	envOpenclawStateDir   = "OPENCLAW_STATE_DIR"
 	envOpenclawConfigPath = "OPENCLAW_CONFIG_PATH"
 	envOpenclawWorkspace  = "OPENCLAW_AGENT_WORKSPACE"
@@ -352,7 +353,7 @@ func (sm *SandboxManager) ExecInstance(ctx context.Context, pid string, env []st
 }
 
 func buildSandboxStartCommand() string {
-	return "start-vmdocker-agent.sh >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &"
+	return "mkdir -p \"${TMPDIR:-/tmp}\" && start-vmdocker-agent.sh >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &"
 }
 
 func appendSandboxPersistenceEnv(runtimeEnv []string, workspace string) []string {
@@ -371,6 +372,9 @@ func appendSandboxPersistenceEnv(runtimeEnv []string, workspace string) []string
 
 	if !hasEnvKey(env, envOpenclawStateDir) {
 		env = append(env, envOpenclawStateDir+"="+stateDir)
+	}
+	if !hasEnvKey(env, envOpenclawHome) {
+		env = append(env, envOpenclawHome+"="+workspace)
 	}
 	if !hasEnvKey(env, envOpenclawConfigPath) {
 		env = append(env, envOpenclawConfigPath+"="+filepath.Join(stateDir, openclawConfigFile))
