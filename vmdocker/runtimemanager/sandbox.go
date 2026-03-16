@@ -67,13 +67,16 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
+	createStart := time.Now()
 	log.Info("creating sandbox runtime instance", "pid", pid, "template_image", runtimeSpec.Image.Name, "env_count", len(runtimeEnv))
 	if err := sm.ensureSandboxCLI(ctx); err != nil {
 		return nil, err
 	}
+	templateStart := time.Now()
 	if err := sm.ensureTemplateExists(ctx, runtimeSpec.Image); err != nil {
 		return nil, err
 	}
+	log.Debug("sandbox template ensured", "pid", pid, "template_image", runtimeSpec.Image.Name, "elapsed", time.Since(templateStart))
 
 	port, err := sm.portAllocator.Allocate()
 	if err != nil {
@@ -109,10 +112,12 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	}
 	log.Debug("creating sandbox", "pid", pid, "sandbox_name", sandboxName, "agent", agent, "workspace", workspace, "template_image", runtimeSpec.Image.Name)
 
+	sandboxCreateStart := time.Now()
 	if _, err := sm.runSandboxCommand(ctx, args...); err != nil {
 		sm.portAllocator.Release(port)
 		return nil, err
 	}
+	log.Debug("sandbox create command completed", "pid", pid, "sandbox_name", sandboxName, "elapsed", time.Since(sandboxCreateStart))
 
 	instance := &schema.InstanceInfo{
 		ID:       sandboxName,
@@ -130,6 +135,7 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 		workspace:   workspace,
 	}
 	log.Info("sandbox runtime instance created", "pid", pid, "sandbox_name", sandboxName, "port", port)
+	log.Debug("sandbox runtime instance create elapsed", "pid", pid, "sandbox_name", sandboxName, "elapsed", time.Since(createStart))
 	return instance, nil
 }
 
@@ -164,6 +170,7 @@ func (sm *SandboxManager) GetInstance(pid string) (*schema.InstanceInfo, error) 
 }
 
 func (sm *SandboxManager) StartInstance(ctx context.Context, pid string) error {
+	start := time.Now()
 	log.Info("starting sandbox runtime instance", "pid", pid)
 	sm.mutex.RLock()
 	launchSpec, exists := sm.launchSpecs[pid]
@@ -172,7 +179,11 @@ func (sm *SandboxManager) StartInstance(ctx context.Context, pid string) error {
 		return fmt.Errorf("sandbox launch spec not found: %s", pid)
 	}
 
-	return sm.startSandboxRuntime(ctx, pid, launchSpec.runtimeSpec, launchSpec.runtimeEnv, launchSpec.workspace)
+	if err := sm.startSandboxRuntime(ctx, pid, launchSpec.runtimeSpec, launchSpec.runtimeEnv, launchSpec.workspace); err != nil {
+		return err
+	}
+	log.Debug("sandbox runtime start command completed", "pid", pid, "elapsed", time.Since(start))
+	return nil
 }
 
 func (sm *SandboxManager) startSandboxRuntime(ctx context.Context, pid string, runtimeSpec schema.RuntimeSpec, runtimeEnv []string, workspace string) error {
@@ -320,12 +331,13 @@ func (sm *SandboxManager) inspectTemplateImage(ctx context.Context, imageName st
 }
 
 func (sm *SandboxManager) runSandboxCommand(ctx context.Context, args ...string) (string, error) {
+	start := time.Now()
 	log.Debug("running sandbox command", "args", strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, sm.cliBin, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		trimmed := strings.TrimSpace(string(output))
-		log.Error("sandbox command failed", "args", strings.Join(args, " "), "output", trimmed)
+		log.Error("sandbox command failed", "args", strings.Join(args, " "), "elapsed", time.Since(start), "output", trimmed)
 		if trimmed == "" {
 			return "", err
 		}
@@ -333,7 +345,9 @@ func (sm *SandboxManager) runSandboxCommand(ctx context.Context, args ...string)
 	}
 	trimmed := strings.TrimSpace(string(output))
 	if trimmed != "" {
-		log.Debug("sandbox command completed", "args", strings.Join(args, " "), "output", trimmed)
+		log.Debug("sandbox command completed", "args", strings.Join(args, " "), "elapsed", time.Since(start), "output", trimmed)
+	} else {
+		log.Debug("sandbox command completed", "args", strings.Join(args, " "), "elapsed", time.Since(start))
 	}
 	return trimmed, nil
 }

@@ -98,18 +98,22 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	log.Info("runtime instance created", "pid", v.pid, "port", instanceInfo.Port, "runtime_id", instanceInfo.ID, "backend", instanceInfo.Backend)
 
 	log.Debug("starting runtime instance", "pid", v.pid, "runtime_id", instanceInfo.ID)
+	startRuntimeStart := time.Now()
 	err = runtimeManager.StartInstance(ctx, v.pid)
 	if err != nil {
 		log.Error("start runtime failed", "pid", v.pid, "runtime_id", instanceInfo.ID, "backend", instanceInfo.Backend, "err", err)
 		return err
 	}
 	log.Info("runtime instance start requested", "pid", v.pid, "runtime_id", instanceInfo.ID)
+	log.Debug("runtime instance start elapsed", "pid", v.pid, "runtime_id", instanceInfo.ID, "elapsed", time.Since(startRuntimeStart))
 
+	readyStart := time.Now()
 	err = v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout)
 	if err != nil {
 		log.Error("runtime readiness check failed", "pid", v.pid, "runtime_id", instanceInfo.ID, "backend", instanceInfo.Backend, "err", err)
 		return fmt.Errorf("runtime not ready: %v", err)
 	}
+	log.Debug("runtime readiness confirmed", "pid", v.pid, "runtime_id", instanceInfo.ID, "elapsed", time.Since(readyStart))
 
 	// create ao process
 	log.Debug("sending spawn request to runtime", "pid", v.pid, "cu_addr", cuAddr)
