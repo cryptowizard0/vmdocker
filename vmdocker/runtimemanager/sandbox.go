@@ -263,6 +263,10 @@ type dockerImageInspectResult struct {
 }
 
 func (sm *SandboxManager) ensureTemplateExists(ctx context.Context, imageInfo schema.ImageInfo) error {
+	if imageInfo.Build != nil {
+		return buildImageFromSpec(ctx, sm.cliBin, imageInfo.Build)
+	}
+
 	log.Debug("ensure sandbox template image exists", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
 	if _, err := sm.inspectTemplateImage(ctx, imageInfo.Name); err == nil {
 		log.Debug("sandbox template image already present locally", "image", imageInfo.Name)

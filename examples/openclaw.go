@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker/utils"
+	serverSchema "github.com/hymatrix/hymx/server/schema"
+	vmmSchema "github.com/hymatrix/hymx/vmm/schema"
 	"github.com/permadao/goar/schema"
 	goarSchema "github.com/permadao/goar/schema"
 )
@@ -26,7 +29,7 @@ func spawnOpenclaw() string {
 
 	start := time.Now()
 	fmt.Printf("[openclaw_spawn] start=%s module=%s\n", start.Format(time.RFC3339), OpenclawModuleID)
-	res, err := s.SpawnAndWait(
+	resp, err := s.Spawn(
 		OpenclawModuleID,
 		scheduler,
 		[]goarSchema.Tag{
@@ -36,6 +39,11 @@ func spawnOpenclaw() string {
 			{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_TOKEN", Value: openclawGatewayToken},
 		},
 	)
+	if err != nil {
+		fmt.Printf("[openclaw_spawn] failed after=%s err=%v\n", time.Since(start), err)
+		return ""
+	}
+	res, err := waitForResponse(resp.Id, resp.Id, openclawWaitTimeout("OPENCLAW_SPAWN_WAIT_TIMEOUT", 10*time.Minute))
 	if err != nil {
 		fmt.Printf("[openclaw_spawn] failed after=%s err=%v\n", time.Since(start), err)
 		return ""
@@ -50,11 +58,16 @@ func spawnOpenclaw() string {
 func chatOpenclaw(target string) {
 	start := time.Now()
 	fmt.Printf("[openclaw_chat] start=%s target=%s\n", start.Format(time.RFC3339), target)
-	res, err := s.SendMessageAndWait(target, "",
+	resp, err := s.SendMessage(target, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "Chat"},
 			{Name: "Command", Value: "你好"},
 		})
+	if err != nil {
+		fmt.Printf("[openclaw_chat] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
+		return
+	}
+	res, err := waitForResponse(target, resp.Id, openclawWaitTimeout("OPENCLAW_MESSAGE_WAIT_TIMEOUT", 5*time.Minute))
 	if err != nil {
 		fmt.Printf("[openclaw_chat] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
 		return
@@ -71,13 +84,18 @@ func telegramOpenclaw(target string) {
 
 	start := time.Now()
 	fmt.Printf("[openclaw_tg] start=%s target=%s\n", start.Format(time.RFC3339), target)
-	res, err := s.SendMessageAndWait(target, "",
+	resp, err := s.SendMessage(target, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "ConfigureTelegram"},
 			{Name: "botToken", Value: botToken},
 			{Name: "defaultAccount", Value: defaultAccount},
 			{Name: "dmPolicy", Value: dmPolicy},
 		})
+	if err != nil {
+		fmt.Printf("[openclaw_tg] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
+		return
+	}
+	res, err := waitForResponse(target, resp.Id, openclawWaitTimeout("OPENCLAW_MESSAGE_WAIT_TIMEOUT", 5*time.Minute))
 	if err != nil {
 		fmt.Printf("[openclaw_tg] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
 		return
@@ -90,7 +108,7 @@ func telegramOpenclaw(target string) {
 func pairTgOpenclaw(target, pairCode string) {
 	start := time.Now()
 	fmt.Printf("[openclaw_pair] start=%s target=%s\n", start.Format(time.RFC3339), target)
-	res, err := s.SendMessageAndWait(target, "",
+	resp, err := s.SendMessage(target, "",
 		[]schema.Tag{
 			{Name: "Action", Value: "ApproveTelegramPairing"},
 			{Name: "code", Value: pairCode},
@@ -101,7 +119,61 @@ func pairTgOpenclaw(target, pairCode string) {
 		fmt.Printf("[openclaw_pair] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
 		return
 	}
+	res, err := waitForResponse(target, resp.Id, openclawWaitTimeout("OPENCLAW_MESSAGE_WAIT_TIMEOUT", 5*time.Minute))
+	if err != nil {
+		fmt.Printf("[openclaw_pair] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
+		return
+	}
 	fmt.Printf("[openclaw_pair] done=%s elapsed=%s target=%s\n", time.Now().Format(time.RFC3339), time.Since(start), target)
 	fmt.Println("res, ", res)
 
+}
+
+func waitForResponse(pid, msgid string, timeout time.Duration) (*serverSchema.Response, error) {
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-deadline:
+			return nil, fmt.Errorf("timeout waiting for result after %s", timeout)
+		case <-ticker.C:
+			result, err := s.Client.GetResult(pid, msgid)
+			if err != nil {
+				return nil, err
+			}
+			if result.ItemId == "" {
+				continue
+			}
+			payload, err := json.Marshal(result)
+			if err != nil {
+				return nil, err
+			}
+			return &serverSchema.Response{
+				Id:      responseID(result, msgid),
+				Message: string(payload),
+			}, nil
+		}
+	}
+}
+
+func responseID(result vmmSchema.VmmResult, fallback string) string {
+	if result.ItemId != "" {
+		return result.ItemId
+	}
+	return fallback
+}
+
+func openclawWaitTimeout(envKey string, fallback time.Duration) time.Duration {
+	raw := GetEnvWith(envKey, "")
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		fmt.Printf("[%s] invalid duration %q, fallback=%s\n", envKey, raw, fallback)
+		return fallback
+	}
+	return parsed
 }

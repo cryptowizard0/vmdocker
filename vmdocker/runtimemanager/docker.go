@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ const (
 
 type DockerManager struct {
 	cli           *client.Client
+	cliBin        string
 	instances     map[string]*schema.InstanceInfo
 	mutex         sync.RWMutex
 	portAllocator *portAllocator
@@ -36,14 +38,24 @@ func newDockerManager() (*DockerManager, error) {
 		return nil, fmt.Errorf("failed to create docker client: %v", err)
 	}
 
+	cliBin, err := exec.LookPath("docker")
+	if err != nil {
+		cliBin = "docker"
+	}
+
 	return &DockerManager{
 		cli:           cli,
+		cliBin:        cliBin,
 		instances:     make(map[string]*schema.InstanceInfo),
 		portAllocator: newPortAllocator(10000, 20000),
 	}, nil
 }
 
 func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema.ImageInfo) error {
+	if imageInfo.Build != nil {
+		return buildImageFromSpec(ctx, dm.cliBin, imageInfo.Build)
+	}
+
 	log.Debug("ensure docker image exists", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
 	_, err := dm.cli.ImageInspect(ctx, imageInfo.Name)
 	if err == nil {
