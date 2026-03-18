@@ -120,13 +120,14 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	log.Debug("sandbox create command completed", "pid", pid, "sandbox_name", sandboxName, "elapsed", time.Since(sandboxCreateStart))
 
 	instance := &schema.InstanceInfo{
-		ID:       sandboxName,
-		Name:     pid,
-		Port:     port,
-		Status:   "created",
-		CreateAt: time.Now(),
-		Backend:  schema.BackendSandbox,
-		Agent:    agent,
+		ID:        sandboxName,
+		Name:      pid,
+		Port:      port,
+		Status:    "created",
+		CreateAt:  time.Now(),
+		Backend:   schema.BackendSandbox,
+		Agent:     agent,
+		Workspace: workspace,
 	}
 	sm.instances[pid] = instance
 	sm.launchSpecs[pid] = sandboxLaunchSpec{

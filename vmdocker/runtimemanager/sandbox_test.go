@@ -239,6 +239,7 @@ func TestSandboxManagerCreateInstanceDefaultsSandboxNameToPidPrefix(t *testing.T
 	}
 }
 
+
 func TestSandboxManagerStartInstanceRespectsExplicitOpenclawStateDir(t *testing.T) {
 	sm, logPath, tempDir := newTestSandboxManager(t)
 

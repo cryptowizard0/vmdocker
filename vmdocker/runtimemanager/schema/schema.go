@@ -73,4 +73,5 @@ type InstanceInfo struct {
 	CreateAt time.Time
 	Backend  string
 	Agent    string
+	Workspace string
 }

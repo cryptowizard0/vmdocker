@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -333,7 +335,21 @@ func (v *VmDocker) callSandboxRuntimeEndpoint(ctx context.Context, path string, 
 		return 0, nil, fmt.Errorf("get runtime manager failed: %v", err)
 	}
 
-	command := buildSandboxCurlCommand(path, payload)
+	command := ""
+	cleanup := func() {}
+	if len(payload) > 0 {
+		payloadPath, err := v.writeSandboxPayloadFile(payload)
+		if err != nil {
+			return 0, nil, err
+		}
+		cleanup = func() {
+			_ = os.Remove(payloadPath)
+		}
+		command = buildSandboxCurlCommandFromFile(path, payloadPath)
+	} else {
+		command = buildSandboxCurlCommand(path, payload)
+	}
+	defer cleanup()
 	log.Debug("calling sandbox runtime endpoint", "pid", v.pid, "path", path, "command", command)
 	output, err := runtimeManager.ExecInstance(ctx, v.pid, nil, command)
 	if err != nil {
@@ -348,6 +364,24 @@ func (v *VmDocker) callSandboxRuntimeEndpoint(ctx context.Context, path string, 
 	return statusCode, body, nil
 }
 
+func (v *VmDocker) writeSandboxPayloadFile(payload []byte) (string, error) {
+	if v.instanceInfo == nil {
+		return "", fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
+	}
+	if strings.TrimSpace(v.instanceInfo.Workspace) == "" {
+		return "", fmt.Errorf("sandbox workspace is empty, pid: %s", v.pid)
+	}
+	payloadDir := filepath.Join(v.instanceInfo.Workspace, ".tmp")
+	if err := os.MkdirAll(payloadDir, 0o755); err != nil {
+		return "", fmt.Errorf("create sandbox payload dir failed: %w", err)
+	}
+	payloadPath := filepath.Join(payloadDir, fmt.Sprintf("runtime-request-%d.json", time.Now().UnixNano()))
+	if err := os.WriteFile(payloadPath, payload, 0o600); err != nil {
+		return "", fmt.Errorf("write sandbox payload failed: %w", err)
+	}
+	return payloadPath, nil
+}
+
 func buildSandboxCurlCommand(path string, payload []byte) string {
 	url := "http://127.0.0.1:8080" + path
 	body := ""
@@ -357,6 +391,15 @@ func buildSandboxCurlCommand(path string, payload []byte) string {
 	return fmt.Sprintf("curl -sS -X POST -H %s --data-raw %s %s -w '\\n__STATUS__:%%{http_code}'",
 		shellEscape("Content-Type: application/json"),
 		shellEscape(body),
+			shellEscape(url),
+		)
+}
+
+func buildSandboxCurlCommandFromFile(path, payloadPath string) string {
+	url := "http://127.0.0.1:8080" + path
+	return fmt.Sprintf("curl -sS -X POST -H %s --data-binary @%s %s -w '\\n__STATUS__:%%{http_code}'",
+		shellEscape("Content-Type: application/json"),
+		shellEscape(payloadPath),
 		shellEscape(url),
 	)
 }
