@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/base64"
 	"testing"
 
 	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
@@ -11,45 +10,54 @@ import (
 
 func TestRuntimeSpecFromTags_DefaultsToSandbox(t *testing.T) {
 	spec, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
-		{Name: "Image-Name", Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
-		{Name: "Image-ID", Value: "sha256:sandbox-template"},
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
+		{Name: vmdockerSchema.ImageIDTag, Value: "sha256:sandbox-template"},
+		{Name: vmdockerSchema.ImageSourceTag, Value: vmdockerSchema.ImageSourceModuleData},
+		{Name: vmdockerSchema.ImageArchiveTag, Value: vmdockerSchema.ImageArchiveDockerSaveGZ},
 	})
 	require.NoError(t, err)
 	require.Equal(t, vmdockerSchema.BackendSandbox, spec.Backend)
 	require.Equal(t, "shell", spec.Sandbox.Agent)
 	require.Equal(t, "", spec.Sandbox.Workspace)
 	require.Equal(t, "", spec.Sandbox.Network)
+	require.Equal(t, vmdockerSchema.ImageSourceModuleData, spec.Image.Source)
+	require.Equal(t, vmdockerSchema.ImageArchiveDockerSaveGZ, spec.Image.ArchiveFormat)
 }
 
 func TestRuntimeSpecFromTags_DockerRequiresImageID(t *testing.T) {
 	_, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
 		{Name: vmdockerSchema.RuntimeBackendTag, Value: vmdockerSchema.BackendDocker},
-		{Name: "Image-Name", Value: "chriswebber/docker-openclaw:v0.0.4"},
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw:v0.0.4"},
+		{Name: vmdockerSchema.ImageSourceTag, Value: vmdockerSchema.ImageSourceModuleData},
+		{Name: vmdockerSchema.ImageArchiveTag, Value: vmdockerSchema.ImageArchiveDockerSaveGZ},
 	})
-	require.EqualError(t, err, "Image-ID is empty")
+	require.EqualError(t, err, vmdockerSchema.ImageIDTag+" is empty")
 }
 
 func TestRuntimeSpecFromTags_SandboxRequiresImageID(t *testing.T) {
 	_, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
 		{Name: vmdockerSchema.RuntimeBackendTag, Value: vmdockerSchema.BackendSandbox},
-		{Name: "Image-Name", Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
+		{Name: vmdockerSchema.ImageSourceTag, Value: vmdockerSchema.ImageSourceModuleData},
+		{Name: vmdockerSchema.ImageArchiveTag, Value: vmdockerSchema.ImageArchiveDockerSaveGZ},
 	})
-	require.EqualError(t, err, "Image-ID is empty")
+	require.EqualError(t, err, vmdockerSchema.ImageIDTag+" is empty")
 }
 
-func TestRuntimeSpecFromTags_BuildModeUsesEmbeddedContext(t *testing.T) {
-	spec, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
+func TestRuntimeSpecFromTags_RejectsLegacyBuildModules(t *testing.T) {
+	_, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
 		{Name: vmdockerSchema.RuntimeBackendTag, Value: vmdockerSchema.BackendSandbox},
-		{Name: vmdockerSchema.BuildTypeTag, Value: "dockerfile"},
-		{Name: vmdockerSchema.BuildDockerfileTag, Value: base64.StdEncoding.EncodeToString([]byte("FROM scratch"))},
-		{Name: vmdockerSchema.BuildContextTag, Value: "encoded-context"},
-		{Name: vmdockerSchema.BuildTagTag, Value: "vmdocker-openclaw:test"},
-		{Name: vmdockerSchema.BuildArgTagPrefix + "FOO", Value: "bar"},
+		{Name: "Build-Type", Value: "dockerfile"},
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
+		{Name: vmdockerSchema.ImageIDTag, Value: "sha256:sandbox-template"},
 	})
-	require.NoError(t, err)
-	require.NotNil(t, spec.Image.Build)
-	require.Equal(t, "vmdocker-openclaw:test", spec.Image.Name)
-	require.Equal(t, "FROM scratch", spec.Image.Build.Dockerfile)
-	require.Equal(t, "encoded-context", spec.Image.Build.ContextArchive)
-	require.Equal(t, "bar", spec.Image.Build.Args["FOO"])
+	require.EqualError(t, err, "Build-Type modules are no longer supported")
+}
+
+func TestRuntimeSpecFromTags_RequiresModuleDataSource(t *testing.T) {
+	_, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw-sandbox:v0.0.1"},
+		{Name: vmdockerSchema.ImageIDTag, Value: "sha256:sandbox-template"},
+	})
+	require.EqualError(t, err, "Image-Source must be module-data")
 }

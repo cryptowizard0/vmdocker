@@ -89,6 +89,10 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 		return err
 	}
 	log.Debug("runtime spec resolved", "pid", v.pid, "backend", runtimeSpec.Backend, "image", runtimeSpec.Image.Name, "sandbox_agent", runtimeSpec.Sandbox.Agent, "sandbox_workspace", runtimeSpec.Sandbox.Workspace)
+	if err := ensureModuleImageAvailable(ctx, v.Env.Process.Module, runtimeSpec.Image); err != nil {
+		log.Error("prepare module image failed", "pid", v.pid, "module", v.Env.Process.Module, "image", runtimeSpec.Image.Name, "err", err)
+		return err
+	}
 	containerEnv := utils.ContainerEnvFromTags(tags)
 	log.Debug("runtime env extracted", "pid", v.pid, "env_count", len(containerEnv), "tag_count", len(tags))
 	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, runtimeSpec, containerEnv)
@@ -391,8 +395,8 @@ func buildSandboxCurlCommand(path string, payload []byte) string {
 	return fmt.Sprintf("curl -sS -X POST -H %s --data-raw %s %s -w '\\n__STATUS__:%%{http_code}'",
 		shellEscape("Content-Type: application/json"),
 		shellEscape(body),
-			shellEscape(url),
-		)
+		shellEscape(url),
+	)
 }
 
 func buildSandboxCurlCommandFromFile(path, payloadPath string) string {

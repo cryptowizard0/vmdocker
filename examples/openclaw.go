@@ -81,16 +81,20 @@ func telegramOpenclaw(target string) {
 	botToken := GetEnv("OPENCLAW_TELEGRAM_BOT_TOKEN")
 	defaultAccount := GetEnvWith("OPENCLAW_TELEGRAM_DEFAULT_ACCOUNT", "main")
 	dmPolicy := GetEnvWith("OPENCLAW_TELEGRAM_DM_POLICY", "pairing")
+	allowFrom := GetEnvWith("OPENCLAW_TELEGRAM_ALLOW_FROM", "")
 
 	start := time.Now()
 	fmt.Printf("[openclaw_tg] start=%s target=%s\n", start.Format(time.RFC3339), target)
-	resp, err := s.SendMessage(target, "",
-		[]schema.Tag{
-			{Name: "Action", Value: "ConfigureTelegram"},
-			{Name: "botToken", Value: botToken},
-			{Name: "defaultAccount", Value: defaultAccount},
-			{Name: "dmPolicy", Value: dmPolicy},
-		})
+	tags := []schema.Tag{
+		{Name: "Action", Value: "ConfigureTelegram"},
+		{Name: "botToken", Value: botToken},
+		{Name: "defaultAccount", Value: defaultAccount},
+		{Name: "dmPolicy", Value: dmPolicy},
+	}
+	if allowFrom != "" {
+		tags = append(tags, schema.Tag{Name: "allowFrom", Value: allowFrom})
+	}
+	resp, err := s.SendMessage(target, "", tags)
 	if err != nil {
 		fmt.Printf("[openclaw_tg] failed after=%s target=%s err=%v\n", time.Since(start), target, err)
 		return

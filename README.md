@@ -229,149 +229,175 @@ Every VMDocker module **MUST** include the following tags:
 |----------|-------------|----------|
 | `Image-Name` | Docker image name and tag | `chriswebber/docker-golua:v0.0.2` |
 | `Image-ID` | Docker image SHA256 digest | `sha256:b2e104cdcb5c09a8f213aefcadd451cbabfda1f16c91107e84eef051f807d45b` |
+| `Image-Source` | Module image source selector | `module-data` |
+| `Image-Archive-Format` | Embedded image archive format | `docker-save+gzip` |
 
-> ⚠️ **Important**: Both `Image-Name` and `Image-ID` tags are mandatory for both `docker` and `sandbox` backends. Missing either tag will cause module validation to fail before runtime creation.
+> ⚠️ **Important**: `Image-Name`, `Image-ID`, `Image-Source=module-data`, and `Image-Archive-Format=docker-save+gzip` are mandatory. Legacy `Build-*` modules are no longer supported.
 
-#### **Create Your Own Module**
+#### **What A Module Contains**
 
-Follow these steps to create and deploy your custom VMDocker module:
+VMDocker sandbox modules no longer store a Dockerfile or build recipe for spawn-time builds.
 
-**Step 1: Modify Module Configuration**
+The generated module now contains:
 
-Edit the `examples/module.go` file and fill in your module information:
+- runtime tags such as `Runtime-Backend`, `Sandbox-Agent`, `Openclaw-Version`
+- final image metadata in tags: `Image-Name`, `Image-ID`
+- the actual Docker image archive inside bundle `data`
 
-```go
-// examples/module.go
-sandboxImageName := os.Getenv("VMDOCKER_SANDBOX_IMAGE_NAME")
-sandboxImageID := os.Getenv("VMDOCKER_SANDBOX_IMAGE_ID")
+The image archive format is:
 
-item, _ := s.GenerateModule([]byte{}, schema.Module{
-	Base:         schema.DefaultBaseModule,
-	ModuleFormat: vmdockerSchema.ModuleFormat,
-	Tags: []arSchema.Tag{
-		{Name: "Runtime-Backend", Value: "sandbox"},
-		{Name: "Image-Name", Value: sandboxImageName},
-		{Name: "Image-ID", Value: sandboxImageID},
-		{Name: "Sandbox-Agent", Value: "shell"},
-	},
-})
+```text
+docker save <image> | gzip
 ```
 
-The real example reads these values from the environment and stops with a clear message if they are missing.
+At spawn time, VMDocker behaves like this:
 
-**Step 2: Generate Module File**
+1. Check whether local Docker already has `Image-Name` with the expected `Image-ID`
+2. If it exists, start immediately
+3. If it does not exist, read `mod/mod-<module-id>.json`
+4. Decode bundle `data`, gunzip it, run `docker image load`
+5. Re-tag and verify the restored image
+6. Start the sandbox/runtime
 
-Run the command in the `examples` directory to generate the module configuration file:
+#### **End-To-End Workflow**
+
+Follow these steps to create, validate, and run a sandbox module end to end.
+
+**Step 1: Prepare The Final Image**
+
+Choose one of these two generation modes in `vmdocker_agent/.env`:
+
+- Pull mode:
+  - set `VMDOCKER_SANDBOX_IMAGE_NAME`
+  - optionally set `VMDOCKER_SANDBOX_IMAGE_ID`
+- Build mode:
+  - set `VMDOCKER_BUILD_DOCKERFILE`
+  - set `VMDOCKER_BUILD_CONTEXT_DIR`
+  - set `VMDOCKER_BUILD_TAG`
+
+Common required entries:
+
+```dotenv
+VMDOCKER_URL=http://127.0.0.1:8080
+VMDOCKER_PRIVATE_KEY=
+```
+
+**Step 2: Generate The Module**
+
+Run the generator from `vmdocker_agent`:
 
 ```bash
-export VMDOCKER_SANDBOX_IMAGE_NAME=chriswebber/docker-openclaw-sandbox:latest
-export VMDOCKER_SANDBOX_IMAGE_ID="$(docker image inspect "$VMDOCKER_SANDBOX_IMAGE_NAME" --format='{{.Id}}')"
-
-cd examples
-go run ./ module
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker_agent
+go run ./cmd/module
 ```
 
-This will generate a `mod-xxxx.json` file containing your module configuration.
+This command:
 
-If you want to run the OpenClaw example afterwards, export the generated module ID first:
+- prepares the final local image
+- exports it with `docker save | gzip`
+- writes a local bundle file `mod-<module-id>.json`
+- prints the generated module id
+
+Example output:
 
 ```bash
-export OPENCLAW_MODULE_ID=<generated-module-id>
+[module] generate and save module success, id <generated-module-id>
+[module] local bundle file: mod-<generated-module-id>.json
 ```
 
-**Step 3: Deploy Module**
+**Step 3: Make The Module File Available To The Node**
 
-Copy the generated module file to the VMDocker modules directory:
+For local testing, copy the generated file into the VMDocker node working directory:
 
 ```bash
-# Copy the generated module file to cmd/mod/ directory
-cp mod-*.json ../cmd/mod/
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
+mkdir -p mod
+cp ../vmdocker_agent/mod-<generated-module-id>.json ./mod/mod-<generated-module-id>.json
 ```
 
-**Step 4: Verify Deployment**
+If the node downloads the module from the network instead, Hymx will cache the same bundle as `mod/mod-<module-id>.json` automatically after the first download.
 
-Check if the module file is correctly deployed:
+**Step 4: Start The VMDocker Node**
 
 ```bash
-ls ../cmd/mod/mod-*.json
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
+go build -o ./build/hymx-node ./cmd
+./build/hymx-node --config ./config.yaml
 ```
 
-Now your custom module is ready to use in VMDocker!
+**Step 5: Configure Example Environment**
+
+In `vmdocker/examples/.env`, point both ids to the generated module:
+
+```dotenv
+VMDOCKER_MODULE_ID=<generated-module-id>
+OPENCLAW_MODULE_ID=<generated-module-id>
+```
+
+**Step 6: Spawn The Runtime**
+
+General spawn:
+
+```bash
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
+go run ./examples spawn
+```
+
+OpenClaw spawn:
+
+```bash
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
+go run ./examples openclaw_spawn
+```
+
+**Step 7: Configure Telegram Without Pairing**
+
+OpenClaw follows the official Telegram rules:
+
+- `dmPolicy=open` is valid
+- but `allowFrom` must include `"*"` for open DM access
+
+Recommended example settings:
+
+```dotenv
+OPENCLAW_TELEGRAM_DM_POLICY=open
+OPENCLAW_TELEGRAM_ALLOW_FROM=*
+```
+
+Then run:
+
+```bash
+cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
+go run ./examples openclaw_tg
+```
+
+The runtime will patch `openclaw.json`, restart the gateway if needed, and enable Telegram with open DMs.
+
+**Step 8: Validate Cold Start From Module Data**
+
+To verify that VMDocker can restore the image from the module file instead of local Docker cache:
+
+1. Delete the local image matching `Image-Name`
+2. Spawn again with the same module id
+3. Confirm the runtime still starts successfully
+
+This validates the full recovery path:
+
+```text
+module file -> bundle data -> gunzip -> docker image load -> sandbox start
+```
 
 #### **Validation Process**
 
 VMDocker automatically validates modules using the `checkModule` function:
 
-1. ✅ **ModuleFormat Check**: Verifies format starts with `web.vmdocker-`
-2. ✅ **Image-Name Check**: Ensures `Image-Name` tag exists and is not empty
-3. ✅ **Image-ID Check**: Ensures `Image-ID` tag exists and is not empty for both backends
-4. ✅ **Sandbox-Workspace Check**: Ensures `Sandbox-Workspace` is present when `Runtime-Backend=sandbox`
+1. ✅ **ModuleFormat Check**: verifies the module format
+2. ✅ **Image-Name Check**: ensures `Image-Name` exists
+3. ✅ **Image-ID Check**: ensures `Image-ID` exists
+4. ✅ **Image-Source Check**: requires `Image-Source=module-data`
+5. ✅ **Image-Archive-Format Check**: requires `Image-Archive-Format=docker-save+gzip`
 
 If any validation fails, the module will be rejected and container creation will fail.
-
-#### **Getting Image SHA256**
-
-To obtain the correct `Image-ID` value for a regular Docker image:
-
-```bash
-# Pull the image
-docker pull chriswebber/docker-golua:v0.0.4
-
-# Get the SHA256 digest
-docker inspect chriswebber/docker-golua:v0.0.4 --format='{{.Id}}'
-# Output: sha256:883e4583a2426e5ab49fc33d22a574201a738c4597660d42fc1cc21ccb04f54f
-```
-
-To obtain the correct `Image-ID` value for a sandbox template image, build it from the `vmdocker_agent` repository:
-
-```bash
-cd /Users/webbergao/work/src/HymxWorkspace/vmdocker_agent
-
-# Build or pull the sandbox template image first
-docker build -f Dockerfile.sandbox -t chriswebber/docker-openclaw-sandbox:latest .
-
-# Get the template image ID used by VMDocker's sandbox verification
-docker image inspect chriswebber/docker-openclaw-sandbox:latest --format='{{.Id}}'
-# Output: sha256:...
-```
-
-For sandbox modules, `Image-Name` and `Image-ID` must match the sandbox template image passed to `docker sandbox create -t ...`.
-
-## 🔧 Module Setup
-
-### 📦 Generate Module Configuration
-
-1. **Configure Example Settings**
-
-   Edit the configuration in `examples/main.go`:
-
-   ```go
-   // examples/main.go
-   var (
-       url    = "http://127.0.0.1:8080"  // Your node URL
-       prvKey = "0x64dd2342616f385f3e8157cf7246cf394217e13e8f91b7d208e9f8b60e25ed1b"  // Your private key
-       
-       signer, _  = goether.NewSigner(prvKey)
-       bundler, _ = goar.NewBundler(signer)
-       s          = sdk.NewFromBundler(url, bundler)
-   )
-   ```
-
-2. **Generate Module File**
-
-   ```bash
-   cd examples
-   go run ./ module
-   ```
-
-   This will generate a `mod-xxxx.json` file containing your module configuration.
-
-3. **Install Module**
-
-   ```bash
-   # Copy the generated module file to the modules directory
-   cp mod-*.json ../cmd/mod/
-   ```
 
 ## 🚀 Running VMDocker
 

@@ -275,8 +275,12 @@ type dockerImageInspectResult struct {
 }
 
 func (sm *SandboxManager) ensureTemplateExists(ctx context.Context, imageInfo schema.ImageInfo) error {
-	if imageInfo.Build != nil {
-		return buildImageFromSpec(ctx, sm.cliBin, imageInfo.Build)
+	if imageInfo.Source == schema.ImageSourceModuleData {
+		log.Debug("verifying module-backed sandbox template exists locally", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
+		if imageInfo.SHA == "" {
+			return fmt.Errorf("Image-ID is empty")
+		}
+		return sm.verifyTemplateSHA(ctx, imageInfo)
 	}
 
 	log.Debug("ensure sandbox template image exists", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)

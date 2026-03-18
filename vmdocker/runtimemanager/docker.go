@@ -52,8 +52,12 @@ func newDockerManager() (*DockerManager, error) {
 }
 
 func (dm *DockerManager) ensureImageExists(ctx context.Context, imageInfo schema.ImageInfo) error {
-	if imageInfo.Build != nil {
-		return buildImageFromSpec(ctx, dm.cliBin, imageInfo.Build)
+	if imageInfo.Source == schema.ImageSourceModuleData {
+		log.Debug("verifying module-backed docker image exists locally", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
+		if imageInfo.SHA == "" {
+			return fmt.Errorf("Image-ID is empty")
+		}
+		return dm.verifyImageSHA(ctx, imageInfo)
 	}
 
 	log.Debug("ensure docker image exists", "image", imageInfo.Name, "expected_sha", imageInfo.SHA)
