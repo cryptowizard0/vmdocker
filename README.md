@@ -312,7 +312,7 @@ For local testing, copy the generated file into the VMDocker node working direct
 ```bash
 cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
 mkdir -p mod
-cp ../vmdocker_agent/mod-<generated-module-id>.json ./mod/mod-<generated-module-id>.json
+cp ../vmdocker_agent/mod/mod-<generated-module-id>.json ./mod/mod-<generated-module-id>.json
 ```
 
 If the node downloads the module from the network instead, Hymx will cache the same bundle as `mod/mod-<module-id>.json` automatically after the first download.

@@ -91,7 +91,7 @@ func TestEnsureModuleImageAvailableLoadsFromModuleFileOnMiss(t *testing.T) {
 	if err := os.MkdirAll("mod", 0o755); err != nil {
 		t.Fatalf("mkdir mod failed: %v", err)
 	}
-	if err := writeModulePayload(moduleID, []byte("tar-contents")); err != nil {
+	if err := writeModulePayload(moduleID, []byte("tar-contents"), false, false); err != nil {
 		t.Fatalf("write module payload failed: %v", err)
 	}
 
@@ -118,6 +118,123 @@ func TestEnsureModuleImageAvailableLoadsFromModuleFileOnMiss(t *testing.T) {
 	}
 	if !strings.Contains(log, "image tag "+imageID+" "+imageName) {
 		t.Fatalf("expected docker image tag after load, got log:\n%s", log)
+	}
+}
+
+func TestEnsureModuleImageAvailableLoadsFromPrettyPrintedModuleFileOnMiss(t *testing.T) {
+	const (
+		moduleID  = "module-pretty"
+		imageName = "example/image:test"
+		imageID   = "sha256:expected"
+	)
+
+	fakeDocker, logPath, nameState, _, cleanup := installFakeDocker(t, imageName, imageID)
+	defer cleanup()
+
+	originalLookPath := dockerLookPath
+	dockerLookPath = func(file string) (string, error) {
+		if file == "docker" {
+			return fakeDocker, nil
+		}
+		return originalLookPath(file)
+	}
+	defer func() {
+		dockerLookPath = originalLookPath
+	}()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	if err := os.MkdirAll("mod", 0o755); err != nil {
+		t.Fatalf("mkdir mod failed: %v", err)
+	}
+	if err := writeModulePayload(moduleID, []byte("tar-contents"), true, false); err != nil {
+		t.Fatalf("write pretty module payload failed: %v", err)
+	}
+
+	if err := ensureModuleImageAvailable(context.Background(), moduleID, runtimeSchema.ImageInfo{
+		Name:          imageName,
+		SHA:           imageID,
+		Source:        runtimeSchema.ImageSourceModuleData,
+		ArchiveFormat: runtimeSchema.ImageArchiveDockerSaveGZ,
+	}); err != nil {
+		t.Fatalf("ensureModuleImageAvailable failed: %v", err)
+	}
+
+	if _, err := os.Stat(nameState); err != nil {
+		t.Fatalf("expected image tag state to exist after load: %v", err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake docker log failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "image load") {
+		t.Fatalf("expected docker image load on pretty-printed module file, got log:\n%s", string(raw))
+	}
+}
+
+func TestEnsureModuleImageAvailableLoadsFromLegacyModuleFileOnMiss(t *testing.T) {
+	const (
+		moduleID  = "module-legacy"
+		imageName = "example/image:test"
+		imageID   = "sha256:expected"
+	)
+
+	fakeDocker, logPath, nameState, _, cleanup := installFakeDocker(t, imageName, imageID)
+	defer cleanup()
+
+	originalLookPath := dockerLookPath
+	dockerLookPath = func(file string) (string, error) {
+		if file == "docker" {
+			return fakeDocker, nil
+		}
+		return originalLookPath(file)
+	}
+	defer func() {
+		dockerLookPath = originalLookPath
+	}()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	if err := writeModulePayload(moduleID, []byte("tar-contents"), false, true); err != nil {
+		t.Fatalf("write legacy module payload failed: %v", err)
+	}
+
+	if err := ensureModuleImageAvailable(context.Background(), moduleID, runtimeSchema.ImageInfo{
+		Name:          imageName,
+		SHA:           imageID,
+		Source:        runtimeSchema.ImageSourceModuleData,
+		ArchiveFormat: runtimeSchema.ImageArchiveDockerSaveGZ,
+	}); err != nil {
+		t.Fatalf("ensureModuleImageAvailable failed: %v", err)
+	}
+
+	if _, err := os.Stat(nameState); err != nil {
+		t.Fatalf("expected image tag state to exist after legacy-path load: %v", err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake docker log failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "image load") {
+		t.Fatalf("expected docker image load on legacy module path, got log:\n%s", string(raw))
 	}
 }
 
@@ -166,7 +283,7 @@ exit 0
 	return fakeDocker, logPath, nameState, idState, func() {}
 }
 
-func writeModulePayload(moduleID string, payload []byte) error {
+func writeModulePayload(moduleID string, payload []byte, pretty, legacy bool) error {
 	var archive bytes.Buffer
 	gz := gzip.NewWriter(&archive)
 	if _, err := gz.Write(payload); err != nil {
@@ -179,11 +296,24 @@ func writeModulePayload(moduleID string, payload []byte) error {
 	item := goarSchema.BundleItem{
 		Data: goarUtils.Base64Encode(archive.Bytes()),
 	}
-	itemBin, err := json.Marshal(item)
+	var itemBin []byte
+	var err error
+	if pretty {
+		itemBin, err = json.MarshalIndent(item, "", "  ")
+	} else {
+		itemBin, err = json.Marshal(item)
+	}
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(moduleFilePath(moduleID), itemBin, 0o644)
+	path := moduleFilePath(moduleID)
+	if legacy {
+		path = legacyModuleFilePath(moduleID)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, itemBin, 0o644)
 }
 
 func shellEscapeForModuleTest(value string) string {
