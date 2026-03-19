@@ -12,12 +12,13 @@ const (
 var ErrNotSupported = errors.New("not supported in stateless runtime mode")
 
 const (
-	BackendDocker  = "docker"
-	BackendSandbox = "sandbox"
+	RuntimeBackendDocker  = "docker"
+	RuntimeBackendSandbox = "sandbox"
 )
 
 const (
 	RuntimeBackendTag   = "Runtime-Backend"
+	StartCommandTag     = "Start-Command"
 	SandboxAgentTag     = "Sandbox-Agent"
 	SandboxWorkspaceTag = "Sandbox-Workspace"
 	SandboxNetworkTag   = "Sandbox-Network"
@@ -54,9 +55,10 @@ type SandboxSpec struct {
 }
 
 type RuntimeSpec struct {
-	Backend string
-	Image   ImageInfo
-	Sandbox SandboxSpec
+	Backend      string
+	StartCommand string
+	Image        ImageInfo
+	Sandbox      SandboxSpec
 }
 
 type InstanceInfo struct {

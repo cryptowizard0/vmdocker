@@ -14,7 +14,7 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	sm, logPath, tempDir := newTestSandboxManager(t)
 
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -53,6 +53,9 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	if !strings.Contains(log, "sandbox exec -e RUNTIME_TYPE=openclaw") {
 		t.Fatalf("expected sandbox exec with runtime env in log, got:\n%s", log)
 	}
+	if !strings.Contains(log, "sandbox exec -u 0:0 -w "+expectedWorkspace+" runtime-pid-1 sh -c ") {
+		t.Fatalf("expected sandbox exec to harden filesystem as root in workspace, got:\n%s", log)
+	}
 	if !strings.Contains(log, "runtime-pid-1 sh -lc") {
 		t.Fatalf("expected sandbox exec target and shell command in log, got:\n%s", log)
 	}
@@ -83,11 +86,18 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	if !strings.Contains(log, "-e XDG_STATE_HOME="+filepath.Join(expectedWorkspace, ".xdg", "state")) {
 		t.Fatalf("expected sandbox exec to inject XDG_STATE_HOME, got:\n%s", log)
 	}
-	if !strings.Contains(log, "start-vmdocker-agent.sh") {
-		t.Fatalf("expected start-vmdocker-agent.sh in log, got:\n%s", log)
+	if !strings.Contains(log, defaultRuntimeStartCommand) {
+		t.Fatalf("expected default runtime start command in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "mkdir -p \"${TMPDIR:-/tmp}\" && start-vmdocker-agent.sh >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &") {
+	defaultCommand, err := buildBackgroundRuntimeCommand("")
+	if err != nil {
+		t.Fatalf("buildBackgroundRuntimeCommand failed: %v", err)
+	}
+	if !strings.Contains(log, defaultCommand) {
 		t.Fatalf("expected sandbox start command to precreate TMPDIR, got:\n%s", log)
+	}
+	if !strings.Contains(log, buildSandboxFilesystemLockdownCommand()) {
+		t.Fatalf("expected sandbox filesystem lockdown command in log, got:\n%s", log)
 	}
 	if strings.Contains(log, "docker run") {
 		t.Fatalf("unexpected nested docker run in log:\n%s", log)
@@ -111,7 +121,7 @@ func TestSandboxManagerCreateInstancePullsAndVerifiesMissingTemplate(t *testing.
 	sm.cliBin = fakeDocker
 
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -160,7 +170,7 @@ func TestSandboxManagerCreateInstanceDefaultsWorkspacePerPid(t *testing.T) {
 	}
 
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -210,7 +220,7 @@ func TestSandboxManagerCreateInstanceDefaultsSandboxNameToPidPrefix(t *testing.T
 
 	pid := "4qIDQKNWm6kF4aDI-rpz_2VLkKWSLVxCJVw2RGJayoQ"
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -239,12 +249,11 @@ func TestSandboxManagerCreateInstanceDefaultsSandboxNameToPidPrefix(t *testing.T
 	}
 }
 
-
 func TestSandboxManagerStartInstanceRespectsExplicitOpenclawStateDir(t *testing.T) {
 	sm, logPath, tempDir := newTestSandboxManager(t)
 
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -283,9 +292,9 @@ func TestSandboxManagerStartInstanceRespectsExplicitOpenclawStateDir(t *testing.
 	}
 }
 
-func TestAppendSandboxPersistenceEnv(t *testing.T) {
+func TestAppendRuntimePersistenceEnv(t *testing.T) {
 	workspace := "/tmp/workspace/sandbox_workspace/pid-1"
-	env := appendSandboxPersistenceEnv([]string{"RUNTIME_TYPE=openclaw"}, workspace)
+	env := appendRuntimePersistenceEnv([]string{"RUNTIME_TYPE=openclaw"}, workspace)
 	expected := []string{
 		"RUNTIME_TYPE=openclaw",
 		"OPENCLAW_STATE_DIR=/tmp/workspace/sandbox_workspace/pid-1/.openclaw",
@@ -308,9 +317,9 @@ func TestAppendSandboxPersistenceEnv(t *testing.T) {
 	}
 }
 
-func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
+func TestAppendRuntimePersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 	workspace := "/tmp/workspace/sandbox_workspace/pid-1"
-	env := appendSandboxPersistenceEnv([]string{
+	env := appendRuntimePersistenceEnv([]string{
 		"OPENCLAW_HOME=/custom/openclaw-home",
 		"HOME=/custom/home",
 		"TMPDIR=/custom/tmp",
@@ -341,8 +350,8 @@ func TestAppendSandboxPersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 	}
 }
 
-func TestAppendSandboxPersistenceEnvDerivesConfigFromExplicitStateDir(t *testing.T) {
-	env := appendSandboxPersistenceEnv([]string{
+func TestAppendRuntimePersistenceEnvDerivesConfigFromExplicitStateDir(t *testing.T) {
+	env := appendRuntimePersistenceEnv([]string{
 		"OPENCLAW_STATE_DIR=/custom/state",
 	}, "/tmp/workspace/sandbox_workspace/pid-1")
 	full := strings.Join(env, "\n")
@@ -356,7 +365,7 @@ func TestSandboxManagerRemoveInstancePreservesWorkspace(t *testing.T) {
 	_ = logPath
 
 	spec := schema.RuntimeSpec{
-		Backend: schema.BackendSandbox,
+		Backend: schema.RuntimeBackendSandbox,
 		Image: schema.ImageInfo{
 			Name: "chriswebber/docker-openclaw-sandbox:test",
 			SHA:  "sha256:expected",
@@ -388,6 +397,75 @@ func TestSandboxManagerRemoveInstancePreservesWorkspace(t *testing.T) {
 	}
 	if string(raw) != "keep" {
 		t.Fatalf("marker contents = %q, want keep", string(raw))
+	}
+}
+
+func TestBuildBackgroundRuntimeCommandUsesConfiguredRuntimeCommand(t *testing.T) {
+	command, err := buildBackgroundRuntimeCommand("/app/custom-entrypoint --serve")
+	if err != nil {
+		t.Fatalf("buildBackgroundRuntimeCommand failed: %v", err)
+	}
+	expected := "mkdir -p \"${TMPDIR:-/tmp}\" && '/app/custom-entrypoint' '--serve' >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &"
+	if command != expected {
+		t.Fatalf("buildBackgroundRuntimeCommand() = %q, want %q", command, expected)
+	}
+}
+
+func TestSandboxManagerStartInstancePrefersStartCommandOverSandboxCommand(t *testing.T) {
+	sm, logPath, tempDir := newTestSandboxManager(t)
+
+	spec := schema.RuntimeSpec{
+		Backend:      schema.RuntimeBackendSandbox,
+		StartCommand: "/app/start-runtime.sh --foreground",
+		Image: schema.ImageInfo{
+			Name: "chriswebber/docker-openclaw-sandbox:test",
+			SHA:  "sha256:expected",
+		},
+		Sandbox: schema.SandboxSpec{
+			Agent:     "shell",
+			Workspace: filepath.Join(tempDir, "workspace"),
+			Name:      "runtime-pid-6",
+			Command:   "legacy-sandbox-command",
+		},
+	}
+
+	if _, err := sm.CreateInstance(context.Background(), "pid-6", spec, nil); err != nil {
+		t.Fatalf("CreateInstance failed: %v", err)
+	}
+	if err := sm.StartInstance(context.Background(), "pid-6"); err != nil {
+		t.Fatalf("StartInstance failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake docker log failed: %v", err)
+	}
+	log := string(raw)
+	expectedCommand, err := buildBackgroundRuntimeCommand("/app/start-runtime.sh --foreground")
+	if err != nil {
+		t.Fatalf("buildBackgroundRuntimeCommand failed: %v", err)
+	}
+	if !strings.Contains(log, expectedCommand) {
+		t.Fatalf("expected Start-Command based sandbox command in log, got:\n%s", log)
+	}
+	if strings.Contains(log, "legacy-sandbox-command") {
+		t.Fatalf("did not expect Sandbox-Command to override Start-Command, got:\n%s", log)
+	}
+}
+
+func TestBuildSandboxFilesystemLockdownCommand(t *testing.T) {
+	command := buildSandboxFilesystemLockdownCommand()
+	for _, snippet := range []string{
+		"chown -R root:root /home/agent",
+		"chmod 0555 /home/agent",
+		"chown -R root:root /workspace",
+		"chmod 0555 /workspace",
+		"chmod 0755 /tmp",
+		"chmod 0755 /var/tmp",
+	} {
+		if !strings.Contains(command, snippet) {
+			t.Fatalf("expected %q in %q", snippet, command)
+		}
 	}
 }
 

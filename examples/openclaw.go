@@ -26,6 +26,7 @@ func spawnOpenclaw() string {
 	openclawAPIKey := os.Getenv("OPENCLAW_API_KEY")
 	sandboxWorkspace := GetEnvWith("OPENCLAW_SANDBOX_WORKSPACE", ".")
 	openclawGatewayToken := GetEnvWith("OPENCLAW_GATEWAY_TOKEN", "openclaw-test-token")
+	runtimeBackend := GetEnvWith("RUNTIME_BACKEND", "")
 
 	start := time.Now()
 	fmt.Printf("[openclaw_spawn] start=%s module=%s\n", start.Format(time.RFC3339), OpenclawModuleID)
@@ -37,6 +38,7 @@ func spawnOpenclaw() string {
 			{Name: "apiKey", Value: openclawAPIKey},
 			{Name: "Sandbox-Workspace", Value: sandboxWorkspace},
 			{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_TOKEN", Value: openclawGatewayToken},
+			{Name: "Runtime-Backend", Value: runtimeBackend},
 		},
 	)
 	if err != nil {

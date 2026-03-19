@@ -240,9 +240,11 @@ VMDocker sandbox modules no longer store a Dockerfile or build recipe for spawn-
 
 The generated module now contains:
 
-- runtime tags such as `Runtime-Backend`, `Sandbox-Agent`, `Openclaw-Version`
+- image/runtime metadata tags such as `Start-Command`, `Sandbox-Agent`, `Openclaw-Version`
 - final image metadata in tags: `Image-Name`, `Image-ID`
 - the actual Docker image archive inside bundle `data`
+
+`Runtime-Backend` is no longer stored in the module. Backend selection now happens at spawn time.
 
 The image archive format is:
 
@@ -258,6 +260,78 @@ At spawn time, VMDocker behaves like this:
 4. Decode bundle `data`, gunzip it, run `docker image load`
 5. Re-tag and verify the restored image
 6. Start the sandbox/runtime
+
+#### **Runtime Tags And Spawn Tags**
+
+Backend and startup behavior are split on purpose:
+
+- Module tags describe the image itself
+- Spawn tags describe how this specific run should execute
+
+Recommended module tags:
+
+| Tag Name | Where | Description | Example |
+|----------|-------|-------------|----------|
+| `Start-Command` | module | Default runtime entry command for both docker and sandbox backends | `/usr/local/bin/start-vmdocker-agent.sh` |
+| `Sandbox-Agent` | module | Docker Sandbox agent type | `shell` |
+| `Openclaw-Version` | module | Optional runtime metadata | `2026.3.13` |
+
+Supported spawn-time runtime tags:
+
+| Tag Name | Where | Description | Example |
+|----------|-------|-------------|----------|
+| `Runtime-Backend` | spawn | Runtime backend selector | `docker`, `sandbox` |
+| `Start-Command` | spawn | Optional one-off override for module `Start-Command` | `/app/custom-entrypoint --serve` |
+| `Sandbox-Workspace` | spawn | Optional workspace root override | `/data/runtime` |
+
+Backend rules:
+
+- If spawn sets `Runtime-Backend`, VMDocker uses that backend
+- If spawn omits it, VMDocker chooses by OS
+- macOS / Windows default to `sandbox`
+- Linux defaults to `docker`
+- Linux rejects `Runtime-Backend=sandbox`
+
+`Start-Command` rules:
+
+- `Start-Command` should normally live in the module
+- Spawn may override it for testing or one-off runtime changes
+- The value is parsed as `command + args`, not as a shell fragment
+
+#### **Runtime Workspace And Environment**
+
+Both `docker` and `sandbox` now follow the same runtime workspace contract.
+
+Given a workspace root, VMDocker resolves the per-instance workspace as:
+
+```text
+<workspace-root>/sandbox_workspace/<pid>
+```
+
+The runtime then uses these paths inside that workspace:
+
+| Environment Variable | Default Value |
+|----------------------|---------------|
+| `OPENCLAW_HOME` | `<workspace>` |
+| `OPENCLAW_STATE_DIR` | `<workspace>/.openclaw` |
+| `OPENCLAW_CONFIG_PATH` | `<workspace>/.openclaw/openclaw.json` |
+| `OPENCLAW_AGENT_WORKSPACE` | `<workspace>/.openclaw/workspace` |
+| `HOME` | `<workspace>/.home` |
+| `TMPDIR` | `<workspace>/.tmp` |
+| `XDG_CONFIG_HOME` | `<workspace>/.xdg/config` |
+| `XDG_CACHE_HOME` | `<workspace>/.xdg/cache` |
+| `XDG_STATE_HOME` | `<workspace>/.xdg/state` |
+
+If these env vars are already provided explicitly, VMDocker preserves the explicit value.
+
+#### **Current Runtime Confinement**
+
+The current runtime policy is:
+
+- `docker`: container root filesystem is read-only; the mapped instance workspace remains writable
+- `sandbox`: runtime startup hardens common writable locations such as `/tmp`, `/var/tmp`, `/home/agent`, and `/workspace`, while keeping the mapped instance workspace writable
+
+This means both backends are intended to write runtime state only inside the mapped per-instance workspace.
 
 #### **End-To-End Workflow**
 

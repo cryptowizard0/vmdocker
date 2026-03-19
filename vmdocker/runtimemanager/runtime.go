@@ -2,6 +2,8 @@ package runtimemanager
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sync"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
@@ -22,21 +24,61 @@ type IRuntimeManager interface {
 }
 
 var (
-	runtimeOnce     sync.Once
-	runtimeInstance IRuntimeManager
+	runtimeOnce = map[string]*sync.Once{
+		schema.RuntimeBackendDocker:  {},
+		schema.RuntimeBackendSandbox: {},
+	}
+	runtimeInstance = map[string]IRuntimeManager{}
+	runtimeInitErr  = map[string]error{}
 )
 
-func GetRuntimeManager() (IRuntimeManager, error) {
-	var initErr error
-	runtimeOnce.Do(func() {
-		runtimeInstance, initErr = newSandboxManager()
-	})
-	if initErr != nil {
-		return nil, initErr
+func GetRuntimeManager(backend string) (IRuntimeManager, error) {
+	backend = normalizeRuntimeBackend(backend)
+	if backend == "" {
+		return nil, schema.ErrNotSupported
 	}
-	return runtimeInstance, nil
+	if runtime.GOOS == "linux" && backend == schema.RuntimeBackendSandbox {
+		return nil, fmt.Errorf("runtime backend %s is not supported on linux", backend)
+	}
+
+	once, ok := runtimeOnce[backend]
+	if !ok {
+		return nil, schema.ErrNotSupported
+	}
+
+	once.Do(func() {
+		switch backend {
+		case schema.RuntimeBackendSandbox:
+			runtimeInstance[backend], runtimeInitErr[backend] = newSandboxManager()
+		case schema.RuntimeBackendDocker:
+			runtimeInstance[backend], runtimeInitErr[backend] = newDockerManager()
+		}
+	})
+	if err := runtimeInitErr[backend]; err != nil {
+		return nil, err
+	}
+
+	instance := runtimeInstance[backend]
+	if instance == nil {
+		return nil, fmt.Errorf("runtime manager initialization failed")
+	}
+	return instance, nil
 }
 
-func GetDockerManager() (IRuntimeManager, error) {
-	return newDockerManager()
+func normalizeRuntimeBackend(backend string) string {
+	if backend == "" {
+		switch runtime.GOOS {
+		case "darwin", "windows":
+			return schema.RuntimeBackendSandbox
+		default:
+			return schema.RuntimeBackendDocker
+		}
+	}
+
+	switch backend {
+	case schema.RuntimeBackendSandbox, schema.RuntimeBackendDocker:
+		return backend
+	default:
+		return ""
+	}
 }

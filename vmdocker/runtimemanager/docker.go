@@ -124,63 +124,26 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 		return nil, err
 	}
 
-	pidsLimit := int64(256)
-	hostConfig := &container.HostConfig{
-		PortBindings: nat.PortMap{
-			nat.Port(schema.ExprotPort): []nat.PortBinding{{
-				HostIP:   schema.AllowHost,
-				HostPort: fmt.Sprintf("%d", port),
-			}},
-		},
-		SecurityOpt: []string{"no-new-privileges:true"},
-		CapDrop:     []string{"ALL"},
-		MaskedPaths: []string{
-			"/proc/acpi",
-			"/proc/kcore",
-			"/proc/keys",
-			"/proc/latency_stats",
-			"/proc/timer_list",
-			"/proc/timer_stats",
-			"/proc/sched_debug",
-			"/proc/scsi",
-			"/sys/firmware",
-		},
-		ReadonlyPaths: []string{
-			"/etc/hosts",
-			"/etc/hostname",
-			"/etc/resolv.conf",
-			"/proc/asound",
-			"/proc/bus",
-			"/proc/fs",
-			"/proc/irq",
-			"/proc/sys",
-			"/proc/sysrq-trigger",
-		},
-		Resources: container.Resources{
-			Memory:     int64(schema.MaxMem),
-			MemorySwap: -1,
-			PidsLimit:  &pidsLimit,
-			CPUPeriod:  100000,
-			CPUQuota:   200000,
-			CPUShares:  1024,
-		},
-	}
-	if schema.UseMount {
-		hostConfig.Mounts = []mount.Mount{{
-			Type:     mount.TypeBind,
-			Source:   schema.MountSource,
-			Target:   schema.MountTarget,
-			ReadOnly: true,
-		}}
+	workspace, err := ensureRuntimeWorkspace(pid, runtimeSpec.Sandbox.Workspace)
+	if err != nil {
+		dm.portAllocator.Release(port)
+		return nil, err
 	}
 
-	config := &container.Config{
-		Image: runtimeSpec.Image.Name,
-		User:  "65532:65532",
-		ExposedPorts: nat.PortSet{
-			nat.Port(schema.ExprotPort): struct{}{},
-		},
-		Env: runtimeEnv,
+	runtimeEnv = appendRuntimePersistenceEnv(runtimeEnv, workspace)
+
+	hostConfig := buildDockerHostConfig(port, workspace)
+
+	startCommand, err := buildForegroundRuntimeCommand(runtimeSpec.StartCommand)
+	if err != nil {
+		dm.portAllocator.Release(port)
+		return nil, fmt.Errorf("build docker start command failed: %w", err)
+	}
+
+	config, err := buildDockerContainerConfig(runtimeSpec, runtimeEnv, startCommand, workspace)
+	if err != nil {
+		dm.portAllocator.Release(port)
+		return nil, err
 	}
 
 	resp, err := dm.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, ContainerNamePrefix+pid)
@@ -191,12 +154,13 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 	log.Info("docker runtime instance created", "pid", pid, "container_id", resp.ID, "port", port)
 
 	instanceInfo := &schema.InstanceInfo{
-		ID:       resp.ID,
-		Name:     pid,
-		Port:     port,
-		Status:   "created",
-		CreateAt: time.Now(),
-		Backend:  schema.BackendDocker,
+		ID:        resp.ID,
+		Name:      pid,
+		Port:      port,
+		Status:    "created",
+		CreateAt:  time.Now(),
+		Backend:   schema.RuntimeBackendDocker,
+		Workspace: workspace,
 	}
 	dm.instances[pid] = instanceInfo
 	return instanceInfo, nil
@@ -259,6 +223,82 @@ func (dm *DockerManager) StopInstance(ctx context.Context, pid string) error {
 	instance.Status = "stopped"
 	log.Info("docker runtime instance stopped", "pid", pid, "container_id", instance.ID)
 	return nil
+}
+
+func buildDockerContainerConfig(runtimeSpec schema.RuntimeSpec, runtimeEnv, startCommand []string, workspace string) (*container.Config, error) {
+	if len(startCommand) == 0 {
+		return nil, fmt.Errorf("docker start command is empty")
+	}
+
+	return &container.Config{
+		Image:      runtimeSpec.Image.Name,
+		Entrypoint: []string{startCommand[0]},
+		ExposedPorts: nat.PortSet{
+			nat.Port(schema.ExprotPort): struct{}{},
+		},
+		Cmd:        startCommand[1:],
+		Env:        runtimeEnv,
+		WorkingDir: workspace,
+	}, nil
+}
+
+func buildDockerHostConfig(port int, workspace string) *container.HostConfig {
+	pidsLimit := int64(256)
+	hostConfig := &container.HostConfig{
+		PortBindings: nat.PortMap{
+			nat.Port(schema.ExprotPort): []nat.PortBinding{{
+				HostIP:   schema.AllowHost,
+				HostPort: fmt.Sprintf("%d", port),
+			}},
+		},
+		ReadonlyRootfs: true,
+		SecurityOpt:    []string{"no-new-privileges:true"},
+		CapDrop:        []string{"ALL"},
+		MaskedPaths: []string{
+			"/proc/acpi",
+			"/proc/kcore",
+			"/proc/keys",
+			"/proc/latency_stats",
+			"/proc/timer_list",
+			"/proc/timer_stats",
+			"/proc/sched_debug",
+			"/proc/scsi",
+			"/sys/firmware",
+		},
+		ReadonlyPaths: []string{
+			"/etc/hosts",
+			"/etc/hostname",
+			"/etc/resolv.conf",
+			"/proc/asound",
+			"/proc/bus",
+			"/proc/fs",
+			"/proc/irq",
+			"/proc/sys",
+			"/proc/sysrq-trigger",
+		},
+		Resources: container.Resources{
+			Memory:     int64(schema.MaxMem),
+			MemorySwap: -1,
+			PidsLimit:  &pidsLimit,
+			CPUPeriod:  100000,
+			CPUQuota:   200000,
+			CPUShares:  1024,
+		},
+	}
+	if schema.UseMount {
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   schema.MountSource,
+			Target:   schema.MountTarget,
+			ReadOnly: true,
+		})
+	}
+	hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+		Type:   mount.TypeBind,
+		Source: workspace,
+		Target: workspace,
+	})
+	return hostConfig
 }
 
 func (dm *DockerManager) ExecInstance(context.Context, string, []string, string) (string, error) {

@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -15,24 +13,7 @@ import (
 )
 
 const (
-	defaultSandboxAgent    = "shell"
-	runtimeContainerPrefix = "runtime_"
-
-	openclawStateDirName  = ".openclaw"
-	openclawConfigFile    = "openclaw.json"
-	openclawWorkspaceDir  = "workspace"
-	sandboxHomeDirName    = ".home"
-	sandboxTmpDirName     = ".tmp"
-	sandboxXDGDirName     = ".xdg"
-	envOpenclawHome       = "OPENCLAW_HOME"
-	envOpenclawStateDir   = "OPENCLAW_STATE_DIR"
-	envOpenclawConfigPath = "OPENCLAW_CONFIG_PATH"
-	envOpenclawWorkspace  = "OPENCLAW_AGENT_WORKSPACE"
-	envHome               = "HOME"
-	envTmpDir             = "TMPDIR"
-	envXDGConfigHome      = "XDG_CONFIG_HOME"
-	envXDGCacheHome       = "XDG_CACHE_HOME"
-	envXDGStateHome       = "XDG_STATE_HOME"
+	defaultSandboxAgent = "shell"
 )
 
 type SandboxManager struct {
@@ -88,14 +69,10 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 		sandboxName = defaultSandboxName(pid)
 	}
 
-	workspace, err := resolveSandboxWorkspace(pid, runtimeSpec.Sandbox.Workspace)
+	workspace, err := ensureRuntimeWorkspaceRoot(pid, runtimeSpec.Sandbox.Workspace)
 	if err != nil {
 		sm.portAllocator.Release(port)
 		return nil, err
-	}
-	if err := os.MkdirAll(workspace, 0o755); err != nil {
-		sm.portAllocator.Release(port)
-		return nil, fmt.Errorf("create sandbox workspace failed: %w", err)
 	}
 
 	agent := runtimeSpec.Sandbox.Agent
@@ -125,7 +102,7 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 		Port:      port,
 		Status:    "created",
 		CreateAt:  time.Now(),
-		Backend:   schema.BackendSandbox,
+		Backend:   schema.RuntimeBackendSandbox,
 		Agent:     agent,
 		Workspace: workspace,
 	}
@@ -138,17 +115,6 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	log.Info("sandbox runtime instance created", "pid", pid, "sandbox_name", sandboxName, "port", port)
 	log.Debug("sandbox runtime instance create elapsed", "pid", pid, "sandbox_name", sandboxName, "elapsed", time.Since(createStart))
 	return instance, nil
-}
-
-func resolveSandboxWorkspace(pid, root string) (string, error) {
-	var err error
-	if root == "" {
-		root, err = os.Getwd()
-		if err != nil {
-			return "", err
-		}
-	}
-	return filepath.Join(root, "sandbox_workspace", pid), nil
 }
 
 func defaultSandboxName(pid string) string {
@@ -193,13 +159,29 @@ func (sm *SandboxManager) startSandboxRuntime(ctx context.Context, pid string, r
 		return err
 	}
 
-	command := runtimeSpec.Sandbox.Command
+	lockdownCommand := buildSandboxFilesystemLockdownCommand()
+	if _, err := sm.execInstanceAsUser(ctx, instance, "0:0", nil, lockdownCommand, false); err != nil {
+		return fmt.Errorf("sandbox filesystem lockdown failed: %w", err)
+	}
+
+	command := runtimeSpec.StartCommand
+	if command != "" {
+		command, err = buildBackgroundRuntimeCommand(runtimeSpec.StartCommand)
+		if err != nil {
+			return fmt.Errorf("build sandbox start command failed: %w", err)
+		}
+	} else {
+		command = runtimeSpec.Sandbox.Command
+	}
 	if command == "" {
-		command = buildSandboxStartCommand()
+		command, err = buildBackgroundRuntimeCommand("")
+		if err != nil {
+			return fmt.Errorf("build sandbox start command failed: %w", err)
+		}
 	}
 	log.Debug("executing sandbox runtime start command", "pid", pid, "sandbox_name", instance.ID, "command", command, "env_count", len(runtimeEnv))
 
-	if _, err := sm.ExecInstance(ctx, pid, appendSandboxPersistenceEnv(runtimeEnv, workspace), command); err != nil {
+	if _, err := sm.ExecInstance(ctx, pid, appendRuntimePersistenceEnv(runtimeEnv, workspace), command); err != nil {
 		return err
 	}
 
@@ -363,89 +345,37 @@ func (sm *SandboxManager) ExecInstance(ctx context.Context, pid string, env []st
 		return "", err
 	}
 
+	return sm.execInstanceAsUser(ctx, instance, "", env, command, true)
+}
+
+func (sm *SandboxManager) execInstanceAsUser(ctx context.Context, instance *schema.InstanceInfo, user string, env []string, command string, loginShell bool) (string, error) {
 	args := []string{"sandbox", "exec"}
+	if user != "" {
+		args = append(args, "-u", user)
+	}
 	for _, item := range env {
 		if strings.TrimSpace(item) == "" {
 			continue
 		}
 		args = append(args, "-e", item)
 	}
-	args = append(args, instance.ID, "sh", "-lc", command)
-	log.Debug("exec into sandbox runtime", "pid", pid, "sandbox_name", instance.ID, "env_count", len(env), "command", command)
+	if strings.TrimSpace(instance.Workspace) != "" {
+		args = append(args, "-w", instance.Workspace)
+	}
+	shellFlag := "-c"
+	if loginShell {
+		shellFlag = "-lc"
+	}
+	args = append(args, instance.ID, "sh", shellFlag, command)
+	log.Debug("exec into sandbox runtime", "sandbox_name", instance.ID, "user", user, "env_count", len(env), "workdir", instance.Workspace, "login_shell", loginShell, "command", command)
 	return sm.runSandboxCommand(ctx, args...)
 }
 
-func buildSandboxStartCommand() string {
-	return "mkdir -p \"${TMPDIR:-/tmp}\" && start-vmdocker-agent.sh >\"${TMPDIR:-/tmp}/vmdocker-agent.log\" 2>&1 &"
-}
-
-func appendSandboxPersistenceEnv(runtimeEnv []string, workspace string) []string {
-	env := append([]string(nil), runtimeEnv...)
-	if workspace == "" {
-		return env
-	}
-
-	stateDir := envValue(env, envOpenclawStateDir, filepath.Join(workspace, openclawStateDirName))
-	agentWorkspace := envValue(env, envOpenclawWorkspace, filepath.Join(stateDir, openclawWorkspaceDir))
-	homeDir := envValue(env, envHome, filepath.Join(workspace, sandboxHomeDirName))
-	tmpDir := envValue(env, envTmpDir, filepath.Join(workspace, sandboxTmpDirName))
-	xdgConfigHome := envValue(env, envXDGConfigHome, filepath.Join(workspace, sandboxXDGDirName, "config"))
-	xdgCacheHome := envValue(env, envXDGCacheHome, filepath.Join(workspace, sandboxXDGDirName, "cache"))
-	xdgStateHome := envValue(env, envXDGStateHome, filepath.Join(workspace, sandboxXDGDirName, "state"))
-
-	if !hasEnvKey(env, envOpenclawStateDir) {
-		env = append(env, envOpenclawStateDir+"="+stateDir)
-	}
-	if !hasEnvKey(env, envOpenclawHome) {
-		env = append(env, envOpenclawHome+"="+workspace)
-	}
-	if !hasEnvKey(env, envOpenclawConfigPath) {
-		env = append(env, envOpenclawConfigPath+"="+filepath.Join(stateDir, openclawConfigFile))
-	}
-	if !hasEnvKey(env, envOpenclawWorkspace) {
-		env = append(env, envOpenclawWorkspace+"="+agentWorkspace)
-	}
-	if !hasEnvKey(env, envHome) {
-		env = append(env, envHome+"="+homeDir)
-	}
-	if !hasEnvKey(env, envTmpDir) {
-		env = append(env, envTmpDir+"="+tmpDir)
-	}
-	if !hasEnvKey(env, envXDGConfigHome) {
-		env = append(env, envXDGConfigHome+"="+xdgConfigHome)
-	}
-	if !hasEnvKey(env, envXDGCacheHome) {
-		env = append(env, envXDGCacheHome+"="+xdgCacheHome)
-	}
-	if !hasEnvKey(env, envXDGStateHome) {
-		env = append(env, envXDGStateHome+"="+xdgStateHome)
-	}
-	return env
-}
-
-func hasEnvKey(env []string, key string) bool {
-	prefix := key + "="
-	for _, item := range env {
-		if strings.HasPrefix(item, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func envValue(env []string, key, fallback string) string {
-	prefix := key + "="
-	for _, item := range env {
-		if strings.HasPrefix(item, prefix) {
-			return strings.TrimPrefix(item, prefix)
-		}
-	}
-	return fallback
-}
-
-func shellEscape(value string) string {
-	if value == "" {
-		return "''"
-	}
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+func buildSandboxFilesystemLockdownCommand() string {
+	return strings.Join([]string{
+		"if [ -d /home/agent ]; then chown -R root:root /home/agent 2>/dev/null || true; chmod -R a-w /home/agent 2>/dev/null || true; chmod 0555 /home/agent 2>/dev/null || true; fi",
+		"if [ -d /workspace ]; then chown -R root:root /workspace 2>/dev/null || true; chmod -R a-w /workspace 2>/dev/null || true; chmod 0555 /workspace 2>/dev/null || true; fi",
+		"if [ -d /tmp ]; then chown root:root /tmp 2>/dev/null || true; chmod 0755 /tmp 2>/dev/null || true; fi",
+		"if [ -d /var/tmp ]; then chown root:root /var/tmp 2>/dev/null || true; chmod 0755 /var/tmp 2>/dev/null || true; fi",
+	}, " && ")
 }

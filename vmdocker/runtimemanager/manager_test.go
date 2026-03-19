@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,11 +27,30 @@ func requireDockerIntegration(t *testing.T) {
 	}
 }
 
+func resetRuntimeManagerForTest() {
+	runtimeOnce = map[string]*sync.Once{
+		schema.RuntimeBackendDocker:  {},
+		schema.RuntimeBackendSandbox: {},
+	}
+	runtimeInstance = map[string]IRuntimeManager{}
+	runtimeInitErr = map[string]error{}
+}
+
+func expectedDefaultRuntimeBackend() string {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		return schema.RuntimeBackendSandbox
+	default:
+		return schema.RuntimeBackendDocker
+	}
+}
+
 func TestDockerManager(t *testing.T) {
 	requireDockerIntegration(t)
+	resetRuntimeManagerForTest()
 	ctx := context.Background()
 
-	dm, err := GetDockerManager()
+	dm, err := GetRuntimeManager(schema.RuntimeBackendDocker)
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 	waitForEnter("Initialize DockerManager")
@@ -42,7 +65,7 @@ func TestDockerManager(t *testing.T) {
 			imageInfo.Name = "chriswebber/docker-golua:v0.0.2"
 		}
 		instanceInfo, err := dm.CreateInstance(ctx, "test-container", schema.RuntimeSpec{
-			Backend: schema.BackendDocker,
+			Backend: schema.RuntimeBackendDocker,
 			Image:   imageInfo,
 		}, nil)
 		if !assert.NoError(t, err) {
@@ -139,7 +162,7 @@ func TestDockerManager(t *testing.T) {
 			imageInfo.Name = "chriswebber/docker-golua:v0.0.2"
 		}
 		_, err := dm.CreateInstance(ctx, "checkpoint-test", schema.RuntimeSpec{
-			Backend: schema.BackendDocker,
+			Backend: schema.RuntimeBackendDocker,
 			Image:   imageInfo,
 		}, nil)
 		if !assert.NoError(t, err) {
@@ -162,11 +185,117 @@ func TestDockerManager(t *testing.T) {
 	})
 }
 
+func TestGetRuntimeManager(t *testing.T) {
+	resetRuntimeManagerForTest()
+	defaultBackend := expectedDefaultRuntimeBackend()
+
+	defaultManager, err := GetRuntimeManager("")
+	assert.NoError(t, err)
+	assert.NotNil(t, defaultManager)
+	switch defaultBackend {
+	case schema.RuntimeBackendSandbox:
+		_, ok := defaultManager.(*SandboxManager)
+		assert.True(t, ok)
+	case schema.RuntimeBackendDocker:
+		_, ok := defaultManager.(*DockerManager)
+		assert.True(t, ok)
+	}
+
+	defaultManagerAgain, err := GetRuntimeManager("")
+	assert.NoError(t, err)
+	assert.Same(t, defaultManager, defaultManagerAgain)
+
+	if runtime.GOOS != "linux" {
+		otherBackend := schema.RuntimeBackendSandbox
+		if defaultBackend == schema.RuntimeBackendSandbox {
+			otherBackend = schema.RuntimeBackendDocker
+		}
+		otherManager, err := GetRuntimeManager(otherBackend)
+		assert.NoError(t, err)
+		assert.NotNil(t, otherManager)
+		if otherBackend != defaultBackend {
+			assert.NotSame(t, defaultManager, otherManager)
+		}
+	}
+
+	_, err = GetRuntimeManager("unknown")
+	assert.ErrorIs(t, err, schema.ErrNotSupported)
+}
+
+func TestGetRuntimeManagerLinuxRejectsSandbox(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only sandbox protection")
+	}
+
+	resetRuntimeManagerForTest()
+	_, err := GetRuntimeManager(schema.RuntimeBackendSandbox)
+	assert.EqualError(t, err, "runtime backend sandbox is not supported on linux")
+}
+
+func TestBuildForegroundRuntimeCommandUsesConfiguredRuntimeCommand(t *testing.T) {
+	args, err := buildForegroundRuntimeCommand("/app/custom-entrypoint --serve")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/app/custom-entrypoint", "--serve"}, args)
+
+	args, err = buildForegroundRuntimeCommand(`/app/custom-entrypoint --label "hello world"`)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/app/custom-entrypoint", "--label", "hello world"}, args)
+
+	args, err = buildForegroundRuntimeCommand("")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{defaultRuntimeStartCommand}, args)
+}
+
+func TestBuildForegroundRuntimeCommandRejectsInvalidQuotedCommand(t *testing.T) {
+	_, err := buildForegroundRuntimeCommand(`"/app/custom-entrypoint`)
+	assert.EqualError(t, err, "unterminated quoted string in start command")
+}
+
+func TestBuildDockerContainerConfigUsesImageUserAndParsedCommand(t *testing.T) {
+	startCommand, err := buildForegroundRuntimeCommand(`/app/start-runtime --label "hello world"`)
+	assert.NoError(t, err)
+
+	runtimeEnv := appendRuntimePersistenceEnv([]string{"OPENCLAW_GATEWAY_TOKEN=test-token"}, "/tmp/runtime-workspace/pid-1")
+	config, err := buildDockerContainerConfig(schema.RuntimeSpec{
+		Image: schema.ImageInfo{Name: "example/runtime:test"},
+	}, runtimeEnv, startCommand, "/tmp/runtime-workspace/pid-1")
+	assert.NoError(t, err)
+	if assert.NotNil(t, config) {
+		assert.Equal(t, "example/runtime:test", config.Image)
+		assert.Empty(t, config.User)
+		assert.Equal(t, []string{"/app/start-runtime"}, []string(config.Entrypoint))
+		assert.Equal(t, []string{"--label", "hello world"}, []string(config.Cmd))
+		assert.Equal(t, "/tmp/runtime-workspace/pid-1", config.WorkingDir)
+		assert.Contains(t, config.Env, "OPENCLAW_GATEWAY_TOKEN=test-token")
+		assert.Contains(t, config.Env, "OPENCLAW_STATE_DIR=/tmp/runtime-workspace/pid-1/.openclaw")
+		assert.Contains(t, config.Env, "OPENCLAW_HOME=/tmp/runtime-workspace/pid-1")
+		assert.Contains(t, config.Env, "TMPDIR=/tmp/runtime-workspace/pid-1/.tmp")
+	}
+}
+
+func TestBuildDockerHostConfigIncludesWorkspaceMount(t *testing.T) {
+	hostConfig := buildDockerHostConfig(18080, "/tmp/runtime-workspace/pid-1")
+	if assert.NotNil(t, hostConfig) {
+		assert.True(t, hostConfig.ReadonlyRootfs)
+		bindings := hostConfig.PortBindings[nat.Port(schema.ExprotPort)]
+		if assert.Len(t, bindings, 1) {
+			assert.Equal(t, schema.AllowHost, bindings[0].HostIP)
+			assert.Equal(t, "18080", bindings[0].HostPort)
+		}
+		assert.Contains(t, hostConfig.Mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: "/tmp/runtime-workspace/pid-1",
+			Target: "/tmp/runtime-workspace/pid-1",
+		})
+	}
+}
+
 func TestEnsureImageExists(t *testing.T) {
 	requireDockerIntegration(t)
+	resetRuntimeManagerForTest()
 	ctx := context.Background()
 
-	dm, err := GetDockerManager()
+	dm, err := GetRuntimeManager(schema.RuntimeBackendDocker)
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 
@@ -203,9 +332,10 @@ func TestEnsureImageExists(t *testing.T) {
 
 func TestVerifyImageSHA(t *testing.T) {
 	requireDockerIntegration(t)
+	resetRuntimeManagerForTest()
 	ctx := context.Background()
 
-	dm, err := GetDockerManager()
+	dm, err := GetRuntimeManager(schema.RuntimeBackendDocker)
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 
@@ -246,9 +376,10 @@ func TestVerifyImageSHA(t *testing.T) {
 
 func TestImageInspectID(t *testing.T) {
 	requireDockerIntegration(t)
+	resetRuntimeManagerForTest()
 	ctx := context.Background()
 
-	dm, err := GetDockerManager()
+	dm, err := GetRuntimeManager(schema.RuntimeBackendDocker)
 	assert.NoError(t, err)
 	assert.NotNil(t, dm)
 

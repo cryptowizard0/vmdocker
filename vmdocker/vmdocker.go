@@ -45,6 +45,8 @@ type VmDocker struct {
 	Env vmmSchema.Env
 	// runtime info
 	instanceInfo *runtimeSchema.InstanceInfo
+	// selected runtime manager for this vm instance
+	runtimeManager runtimemanager.IRuntimeManager
 	// http client
 	client *http.Client
 	// close channel to signal container shutdown
@@ -77,17 +79,17 @@ func (v *VmDocker) Run(cuAddr string, data []byte, tags []goarSchema.Tag) error 
 	log.Info("starting vm runtime spawn flow", "pid", v.pid, "owner", v.Env.Meta.AccId, "module_format", v.Env.Module.ModuleFormat)
 	ctx := context.Background()
 
-	runtimeManager, err := runtimemanager.GetRuntimeManager()
-	if err != nil {
-		log.Error("get runtime manager failed", "err", err)
-		return err
-	}
-
-	runtimeSpec, err := utils.RuntimeSpecFromTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags)
+	runtimeSpec, err := utils.RuntimeSpecFromModuleAndSpawnTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags, tags)
 	if err != nil {
 		log.Error("build runtime spec failed", "pid", v.pid, "err", err)
 		return err
 	}
+	runtimeManager, err := runtimemanager.GetRuntimeManager(runtimeSpec.Backend)
+	if err != nil {
+		log.Error("get runtime manager failed", "pid", v.pid, "backend", runtimeSpec.Backend, "err", err)
+		return err
+	}
+	v.runtimeManager = runtimeManager
 	log.Debug("runtime spec resolved", "pid", v.pid, "backend", runtimeSpec.Backend, "image", runtimeSpec.Image.Name, "sandbox_agent", runtimeSpec.Sandbox.Agent, "sandbox_workspace", runtimeSpec.Sandbox.Workspace)
 	if err := ensureModuleImageAvailable(ctx, v.Env.Process.Module, runtimeSpec.Image); err != nil {
 		log.Error("prepare module image failed", "pid", v.pid, "module", v.Env.Process.Module, "image", runtimeSpec.Image.Name, "err", err)
@@ -164,6 +166,24 @@ func (v *VmDocker) Restore(snapshot string) error {
 	return runtimeSchema.ErrNotSupported
 }
 
+func (v *VmDocker) getRuntimeManager() (runtimemanager.IRuntimeManager, error) {
+	if v.runtimeManager != nil {
+		return v.runtimeManager, nil
+	}
+
+	backend := ""
+	if v.instanceInfo != nil {
+		backend = v.instanceInfo.Backend
+	}
+
+	runtimeManager, err := runtimemanager.GetRuntimeManager(backend)
+	if err != nil {
+		return nil, err
+	}
+	v.runtimeManager = runtimeManager
+	return runtimeManager, nil
+}
+
 func (v *VmDocker) Close() error {
 	// Signal waitForContainerReady to exit immediately
 	select {
@@ -172,7 +192,7 @@ func (v *VmDocker) Close() error {
 		// Channel might be full or closed, ignore
 	}
 
-	runtimeManager, err := runtimemanager.GetRuntimeManager()
+	runtimeManager, err := v.getRuntimeManager()
 	if err != nil {
 		log.Error("get runtime manager failed", "err", err)
 		return err
@@ -302,7 +322,7 @@ func (v *VmDocker) callRuntimeEndpoint(ctx context.Context, path string, payload
 		return 0, nil, fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
 	}
 
-	if v.instanceInfo.Backend == runtimeSchema.BackendSandbox {
+	if v.instanceInfo.Backend == runtimeSchema.RuntimeBackendSandbox {
 		return v.callSandboxRuntimeEndpoint(ctx, path, payload)
 	}
 	return v.callDockerRuntimeEndpoint(path, payload)
@@ -334,7 +354,7 @@ func (v *VmDocker) callDockerRuntimeEndpoint(path string, payload []byte) (int, 
 }
 
 func (v *VmDocker) callSandboxRuntimeEndpoint(ctx context.Context, path string, payload []byte) (int, []byte, error) {
-	runtimeManager, err := runtimemanager.GetRuntimeManager()
+	runtimeManager, err := v.getRuntimeManager()
 	if err != nil {
 		return 0, nil, fmt.Errorf("get runtime manager failed: %v", err)
 	}

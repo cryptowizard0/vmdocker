@@ -61,10 +61,10 @@ func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.Run
 		return schema.RuntimeSpec{}, err
 	}
 
-	backend := utils.GetTagsValueByDefault(schema.RuntimeBackendTag, tags, schema.BackendSandbox)
 	spec := schema.RuntimeSpec{
-		Backend: backend,
-		Image:   imageInfo,
+		Backend:      "",
+		StartCommand: startCommandFromTags(tags),
+		Image:        imageInfo,
 		Sandbox: schema.SandboxSpec{
 			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "shell"),
 			Workspace: utils.GetTagsValueByDefault(schema.SandboxWorkspaceTag, tags, ""),
@@ -74,13 +74,48 @@ func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.Run
 		},
 	}
 
-	switch spec.Backend {
-	case schema.BackendDocker, schema.BackendSandbox:
-	default:
-		return schema.RuntimeSpec{}, errors.New("unsupported runtime backend: " + spec.Backend)
+	return spec, nil
+}
+
+func RuntimeSpecFromModuleAndSpawnTags(moduleFormat string, moduleTags, spawnTags []goarSchema.Tag) (schema.RuntimeSpec, error) {
+	spec, err := RuntimeSpecFromTags(moduleFormat, moduleTags)
+	if err != nil {
+		return schema.RuntimeSpec{}, err
+	}
+
+	backend := runtimeBackendFromTags(spawnTags)
+	if backend != "" {
+		switch backend {
+		case schema.RuntimeBackendDocker, schema.RuntimeBackendSandbox:
+			spec.Backend = backend
+		default:
+			return schema.RuntimeSpec{}, errors.New("unsupported runtime backend: " + backend)
+		}
+	}
+
+	if startCommand := startCommandFromTags(spawnTags); startCommand != "" {
+		spec.StartCommand = startCommand
 	}
 
 	return spec, nil
+}
+
+func runtimeBackendFromTags(tags []goarSchema.Tag) string {
+	for i := len(tags) - 1; i >= 0; i-- {
+		if tags[i].Name == schema.RuntimeBackendTag {
+			return tags[i].Value
+		}
+	}
+	return ""
+}
+
+func startCommandFromTags(tags []goarSchema.Tag) string {
+	for i := len(tags) - 1; i >= 0; i-- {
+		if tags[i].Name == schema.StartCommandTag {
+			return tags[i].Value
+		}
+	}
+	return ""
 }
 
 func imageInfoFromTags(tags []goarSchema.Tag) (schema.ImageInfo, error) {
