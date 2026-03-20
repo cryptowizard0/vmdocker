@@ -305,10 +305,20 @@ func (dm *DockerManager) ExecInstance(context.Context, string, []string, string)
 	return "", schema.ErrNotSupported
 }
 
-func (dm *DockerManager) Checkpoint(context.Context, string, string) (string, error) {
-	return "", schema.ErrNotSupported
+func (dm *DockerManager) Checkpoint(_ context.Context, pid, checkpointName string) (string, error) {
+	instance, err := dm.GetInstance(pid)
+	if err != nil {
+		return "", err
+	}
+	log.Info("checkpointing docker runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
+	return checkpointRuntimeWorkspace(instance.Workspace)
 }
 
-func (dm *DockerManager) Restore(context.Context, string, string, string) error {
-	return schema.ErrNotSupported
+func (dm *DockerManager) Restore(_ context.Context, pid, checkpointName, snapshot string) error {
+	instance, err := dm.GetInstance(pid)
+	if err != nil {
+		return err
+	}
+	log.Info("restoring docker runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
+	return restoreRuntimeWorkspace(instance.Workspace, snapshot)
 }

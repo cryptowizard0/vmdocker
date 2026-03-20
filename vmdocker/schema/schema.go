@@ -24,3 +24,18 @@ type OutboxResponse struct {
 	Result string `json:"result"`
 	Status string `json:"status"`
 }
+
+type RuntimeCheckpointResponse struct {
+	Status string `json:"status"`
+	State  string `json:"state"`
+}
+
+type RuntimeRestoreRequest struct {
+	Env   vmmSchema.Env    `json:"env"`
+	Tags  []goarSchema.Tag `json:"tags"`
+	State string           `json:"state"`
+}
+
+type RuntimeRestoreResponse struct {
+	Status string `json:"status"`
+}

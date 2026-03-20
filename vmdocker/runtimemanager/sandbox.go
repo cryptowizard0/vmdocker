@@ -231,12 +231,22 @@ func (sm *SandboxManager) RemoveInstance(ctx context.Context, pid string) error 
 	return nil
 }
 
-func (sm *SandboxManager) Checkpoint(context.Context, string, string) (string, error) {
-	return "", schema.ErrNotSupported
+func (sm *SandboxManager) Checkpoint(_ context.Context, pid, checkpointName string) (string, error) {
+	instance, err := sm.GetInstance(pid)
+	if err != nil {
+		return "", err
+	}
+	log.Info("checkpointing sandbox runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
+	return checkpointRuntimeWorkspace(instance.Workspace)
 }
 
-func (sm *SandboxManager) Restore(context.Context, string, string, string) error {
-	return schema.ErrNotSupported
+func (sm *SandboxManager) Restore(_ context.Context, pid, checkpointName, snapshot string) error {
+	instance, err := sm.GetInstance(pid)
+	if err != nil {
+		return err
+	}
+	log.Info("restoring sandbox runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
+	return restoreRuntimeWorkspace(instance.Workspace, snapshot)
 }
 
 func (sm *SandboxManager) ensureSandboxCLI(ctx context.Context) error {

@@ -152,7 +152,7 @@ func TestDockerManager(t *testing.T) {
 		waitForEnter("Error Test Cases")
 	})
 
-	t.Run("CheckpointAndRestoreNotSupported", func(t *testing.T) {
+	t.Run("CheckpointAndRestoreWorkspace", func(t *testing.T) {
 		requireDockerIntegration(t)
 		imageInfo := schema.ImageInfo{
 			Name: os.Getenv("VMDOCKER_TEST_IMAGE"),
@@ -175,10 +175,12 @@ func TestDockerManager(t *testing.T) {
 		err = dm.StopInstance(ctx, "checkpoint-test")
 		assert.NoError(t, err)
 
-		_, err = dm.Checkpoint(ctx, "checkpoint-test", "test-checkpoint")
-		assert.ErrorIs(t, err, schema.ErrNotSupported)
-		err = dm.Restore(ctx, "checkpoint-test", "test-checkpoint", "snapshot")
-		assert.ErrorIs(t, err, schema.ErrNotSupported)
+		snapshot, err := dm.Checkpoint(ctx, "checkpoint-test", "test-checkpoint")
+		if assert.NoError(t, err) {
+			assert.NotEmpty(t, snapshot)
+		}
+		err = dm.Restore(ctx, "checkpoint-test", "test-checkpoint", snapshot)
+		assert.NoError(t, err)
 
 		err = dm.RemoveInstance(ctx, "checkpoint-test")
 		assert.NoError(t, err)

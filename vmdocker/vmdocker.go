@@ -25,6 +25,21 @@ import (
 var log = common.NewLog("vmdocker")
 
 const defaultRuntimeReadyTimeout = 10 * time.Minute
+const workspaceCheckpointFormatV1 = "vmdocker.workspace.v1"
+
+type workspaceCheckpoint struct {
+	Format           string `json:"format"`
+	WorkspaceArchive string `json:"workspaceArchive"`
+	RuntimeState     string `json:"runtimeState"`
+	Backend          string `json:"backend"`
+}
+
+type restoreRollbackState struct {
+	instance      runtimeSchema.InstanceInfo
+	runtimeSpec   runtimeSchema.RuntimeSpec
+	runtimeState  string
+	runtimeManger runtimemanager.IRuntimeManager
+}
 
 func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 	vmd, err := New(env, env.Process.Scheduler, env.Process.Tags)
@@ -158,12 +173,145 @@ func (v *VmDocker) Apply(from string, meta vmmSchema.Meta) vmmSchema.Result {
 }
 
 func (v *VmDocker) Checkpoint() (string, error) {
-	return "", runtimeSchema.ErrNotSupported
+	if v.instanceInfo == nil {
+		return "", fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
+	}
+
+	runtimeManager, err := v.getRuntimeManager()
+	if err != nil {
+		return "", err
+	}
+
+	runtimeState, err := v.runtimeCheckpoint()
+	if err != nil {
+		return "", err
+	}
+	workspaceArchive, err := runtimeManager.Checkpoint(context.Background(), v.pid, "workspace")
+	if err != nil {
+		return "", err
+	}
+
+	payload, err := json.Marshal(workspaceCheckpoint{
+		Format:           workspaceCheckpointFormatV1,
+		WorkspaceArchive: workspaceArchive,
+		RuntimeState:     runtimeState,
+		Backend:          v.instanceInfo.Backend,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal workspace checkpoint failed: %w", err)
+	}
+	return string(payload), nil
 }
 
 func (v *VmDocker) Restore(snapshot string) error {
-	_ = snapshot
-	return runtimeSchema.ErrNotSupported
+	var checkpoint workspaceCheckpoint
+	if err := json.Unmarshal([]byte(snapshot), &checkpoint); err != nil {
+		return fmt.Errorf("decode workspace checkpoint failed: %w", err)
+	}
+	if checkpoint.Format != workspaceCheckpointFormatV1 {
+		return fmt.Errorf("unsupported workspace checkpoint format: %s", checkpoint.Format)
+	}
+
+	ctx := context.Background()
+	runtimeSpec, err := utils.RuntimeSpecFromModuleAndSpawnTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags, v.Env.Process.Tags)
+	if err != nil {
+		return err
+	}
+	runtimeManager, err := runtimemanager.GetRuntimeManager(runtimeSpec.Backend)
+	if err != nil {
+		return err
+	}
+
+	if err := ensureModuleImageAvailable(ctx, v.Env.Process.Module, runtimeSpec.Image); err != nil {
+		return fmt.Errorf("prepare module image failed: %w", err)
+	}
+	containerEnv := utils.ContainerEnvFromTags(v.Env.Process.Tags)
+
+	targetWorkspace, err := v.restoreTargetWorkspace(runtimeSpec)
+	if err != nil {
+		return err
+	}
+	stagedWorkspace, cleanupStagedWorkspace, err := runtimemanager.StageRuntimeWorkspaceRestore(targetWorkspace, checkpoint.WorkspaceArchive)
+	if err != nil {
+		return err
+	}
+	defer cleanupStagedWorkspace()
+
+	var rollbackState *restoreRollbackState
+	if v.instanceInfo != nil {
+		currentRuntimeState, err := v.runtimeCheckpoint()
+		if err != nil {
+			return fmt.Errorf("checkpoint current runtime before restore failed: %w", err)
+		}
+		currentRuntimeManager, err := v.getRuntimeManager()
+		if err != nil {
+			return err
+		}
+		currentInstance := *v.instanceInfo
+		rollbackSpec := runtimeSpec
+		rollbackSpec.Backend = currentInstance.Backend
+		rollbackSpec.Sandbox.Workspace = runtimeWorkspaceRootFromPath(currentInstance.Workspace)
+		rollbackState = &restoreRollbackState{
+			instance:      currentInstance,
+			runtimeSpec:   rollbackSpec,
+			runtimeState:  currentRuntimeState,
+			runtimeManger: currentRuntimeManager,
+		}
+		if err := currentRuntimeManager.RemoveInstance(ctx, v.pid); err != nil {
+			return fmt.Errorf("remove provisional runtime failed: %w", err)
+		}
+		v.instanceInfo = nil
+	}
+
+	rollbackWorkspace, commitWorkspace, err := runtimemanager.PromoteRuntimeWorkspace(targetWorkspace, stagedWorkspace)
+	if err != nil {
+		return err
+	}
+	workspaceCommitted := false
+	previousRuntimeRestored := false
+	defer func() {
+		if !workspaceCommitted {
+			_ = rollbackWorkspace()
+			if rollbackState != nil && !previousRuntimeRestored {
+				if err := v.restorePreviousRuntime(ctx, rollbackState, containerEnv); err != nil {
+					log.Error("restore previous runtime failed", "pid", v.pid, "err", err)
+				} else {
+					previousRuntimeRestored = true
+				}
+			}
+		}
+	}()
+
+	v.runtimeManager = runtimeManager
+	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, runtimeSpec, containerEnv)
+	if err != nil {
+		return err
+	}
+	v.instanceInfo = instanceInfo
+
+	restoreFailed := true
+	defer func() {
+		if restoreFailed && v.instanceInfo != nil {
+			_ = runtimeManager.RemoveInstance(ctx, v.pid)
+			v.instanceInfo = nil
+		}
+	}()
+
+	if err := runtimeManager.StartInstance(ctx, v.pid); err != nil {
+		return err
+	}
+	if err := v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout); err != nil {
+		return fmt.Errorf("runtime not ready after restore: %v", err)
+	}
+	if err := v.runtimeRestore(checkpoint.RuntimeState); err != nil {
+		return err
+	}
+	restoreFailed = false
+	workspaceCommitted = true
+	if err := commitWorkspace(); err != nil {
+		log.Warn("remove restore workspace backup failed", "pid", v.pid, "err", err)
+	}
+	return nil
 }
 
 func (v *VmDocker) getRuntimeManager() (runtimemanager.IRuntimeManager, error) {
@@ -440,6 +588,101 @@ func parseSandboxCurlOutput(output string) (int, []byte, error) {
 	}
 	body := []byte(output[:idx])
 	return statusCode, body, nil
+}
+
+func (v *VmDocker) runtimeCheckpoint() (string, error) {
+	statusCode, body, err := v.callRuntimeEndpoint(context.Background(), "/vmm/checkpoint", nil)
+	if err != nil {
+		return "", err
+	}
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("checkpoint request failed with status %d: %s", statusCode, string(body))
+	}
+
+	var response vmdockerSchema.RuntimeCheckpointResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("decode runtime checkpoint response failed: %w", err)
+	}
+	if response.Status != "ok" {
+		return "", fmt.Errorf("runtime checkpoint failed: %s", string(body))
+	}
+	return response.State, nil
+}
+
+func (v *VmDocker) runtimeRestore(state string) error {
+	payload, err := json.Marshal(vmdockerSchema.RuntimeRestoreRequest{
+		Env:   v.Env,
+		Tags:  v.Env.Process.Tags,
+		State: state,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal runtime restore request failed: %w", err)
+	}
+
+	statusCode, body, err := v.callRuntimeEndpoint(context.Background(), "/vmm/restore", payload)
+	if err != nil {
+		return err
+	}
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("restore request failed with status %d: %s", statusCode, string(body))
+	}
+
+	var response vmdockerSchema.RuntimeRestoreResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("decode runtime restore response failed: %w", err)
+	}
+	if response.Status != "ok" {
+		return fmt.Errorf("runtime restore failed: %s", string(body))
+	}
+	return nil
+}
+
+func (v *VmDocker) restoreTargetWorkspace(runtimeSpec runtimeSchema.RuntimeSpec) (string, error) {
+	if v.instanceInfo != nil && strings.TrimSpace(v.instanceInfo.Workspace) != "" {
+		return v.instanceInfo.Workspace, nil
+	}
+
+	root := runtimeSpec.Sandbox.Workspace
+	var err error
+	if root == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	} else {
+		root, err = filepath.Abs(root)
+		if err != nil {
+			return "", err
+		}
+	}
+	return filepath.Join(root, "sandbox_workspace", v.pid), nil
+}
+
+func runtimeWorkspaceRootFromPath(workspace string) string {
+	return filepath.Dir(filepath.Dir(workspace))
+}
+
+func (v *VmDocker) restorePreviousRuntime(ctx context.Context, rollbackState *restoreRollbackState, containerEnv []string) error {
+	if rollbackState == nil {
+		return nil
+	}
+
+	v.runtimeManager = rollbackState.runtimeManger
+	instanceInfo, err := rollbackState.runtimeManger.CreateInstance(ctx, v.pid, rollbackState.runtimeSpec, containerEnv)
+	if err != nil {
+		return fmt.Errorf("rollback create runtime failed: %w", err)
+	}
+	v.instanceInfo = instanceInfo
+	if err := rollbackState.runtimeManger.StartInstance(ctx, v.pid); err != nil {
+		return fmt.Errorf("rollback start runtime failed: %w", err)
+	}
+	if err := v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout); err != nil {
+		return fmt.Errorf("rollback runtime not ready: %w", err)
+	}
+	if err := v.runtimeRestore(rollbackState.runtimeState); err != nil {
+		return fmt.Errorf("rollback runtime restore failed: %w", err)
+	}
+	return nil
 }
 
 func shellEscape(value string) string {
