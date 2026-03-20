@@ -2,6 +2,7 @@ package vmdocker
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -39,5 +40,28 @@ func TestWorkspaceCheckpointJSONRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(decoded.RuntimeState, `"sessionId":"sess-1"`) {
 		t.Fatalf("runtime state missing session id: %s", decoded.RuntimeState)
+	}
+}
+
+func TestHandleRestoreFailureRestoresPreviousRuntimeWithoutWorkspaceRollback(t *testing.T) {
+	restored := false
+	handleRestoreFailure(nil, func() error {
+		restored = true
+		return nil
+	}, true, &restored)
+
+	if !restored {
+		t.Fatalf("expected previous runtime restore to run")
+	}
+}
+
+func TestHandleRestoreFailureDoesNotMarkRestoredOnError(t *testing.T) {
+	restored := false
+	handleRestoreFailure(nil, func() error {
+		return errors.New("boom")
+	}, true, &restored)
+
+	if restored {
+		t.Fatalf("expected previous runtime restore flag to remain false on error")
 	}
 }

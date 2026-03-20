@@ -41,6 +41,20 @@ type restoreRollbackState struct {
 	runtimeManger runtimemanager.IRuntimeManager
 }
 
+func handleRestoreFailure(rollbackWorkspace func() error, restorePreviousRuntime func() error, shouldRestorePreviousRuntime bool, previousRuntimeRestored *bool) {
+	if rollbackWorkspace != nil {
+		_ = rollbackWorkspace()
+	}
+	if !shouldRestorePreviousRuntime || previousRuntimeRestored == nil || *previousRuntimeRestored {
+		return
+	}
+	if err := restorePreviousRuntime(); err != nil {
+		log.Error("restore previous runtime failed", "err", err)
+		return
+	}
+	*previousRuntimeRestored = true
+}
+
 func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
 	vmd, err := New(env, env.Process.Scheduler, env.Process.Tags)
 	if err != nil {
@@ -238,6 +252,24 @@ func (v *VmDocker) Restore(snapshot string) error {
 	defer cleanupStagedWorkspace()
 
 	var rollbackState *restoreRollbackState
+	var rollbackWorkspace func() error
+	workspaceCommitted := false
+	previousRuntimeRestored := false
+	previousRuntimeRemoved := false
+	defer func() {
+		if workspaceCommitted {
+			return
+		}
+		handleRestoreFailure(
+			rollbackWorkspace,
+			func() error {
+				return v.restorePreviousRuntime(ctx, rollbackState, containerEnv)
+			},
+			rollbackState != nil && previousRuntimeRemoved,
+			&previousRuntimeRestored,
+		)
+	}()
+
 	if v.instanceInfo != nil {
 		currentRuntimeState, err := v.runtimeCheckpoint()
 		if err != nil {
@@ -261,26 +293,13 @@ func (v *VmDocker) Restore(snapshot string) error {
 			return fmt.Errorf("remove provisional runtime failed: %w", err)
 		}
 		v.instanceInfo = nil
+		previousRuntimeRemoved = true
 	}
 
 	rollbackWorkspace, commitWorkspace, err := runtimemanager.PromoteRuntimeWorkspace(targetWorkspace, stagedWorkspace)
 	if err != nil {
 		return err
 	}
-	workspaceCommitted := false
-	previousRuntimeRestored := false
-	defer func() {
-		if !workspaceCommitted {
-			_ = rollbackWorkspace()
-			if rollbackState != nil && !previousRuntimeRestored {
-				if err := v.restorePreviousRuntime(ctx, rollbackState, containerEnv); err != nil {
-					log.Error("restore previous runtime failed", "pid", v.pid, "err", err)
-				} else {
-					previousRuntimeRestored = true
-				}
-			}
-		}
-	}()
 
 	v.runtimeManager = runtimeManager
 	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, runtimeSpec, containerEnv)
