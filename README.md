@@ -406,6 +406,9 @@ In `vmdocker/examples/.env`, point both ids to the generated module:
 ```dotenv
 VMDOCKER_MODULE_ID=<generated-module-id>
 OPENCLAW_MODULE_ID=<generated-module-id>
+OPENCLAW_PROVIDER=zen
+OPENCLAW_MODEL=plan
+# Optional: if you omit OPENCLAW_PROVIDER, a fully-qualified model like kimi-coding/k2p5 still works.
 ```
 
 **Step 6: Spawn The Runtime**
@@ -423,6 +426,8 @@ OpenClaw spawn:
 cd /Users/webbergao/work/src/HymxWorkspace/vmdocker
 go run ./examples openclaw_spawn
 ```
+
+The example forwards `provider`, `model`, and `apiKey` as spawn tags to `vmdocker_agent`. If `OPENCLAW_PROVIDER` is set, provider selection is explicit and the runtime will normalize the final model to `<provider>/<model-suffix>`.
 
 **Step 7: Configure Telegram Without Pairing**
 
