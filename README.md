@@ -282,7 +282,6 @@ Supported spawn-time runtime tags:
 |----------|-------|-------------|----------|
 | `Runtime-Backend` | spawn | Runtime backend selector | `docker`, `sandbox` |
 | `Start-Command` | spawn | Optional one-off override for module `Start-Command` | `/app/custom-entrypoint --serve` |
-| `Sandbox-Workspace` | spawn | Optional workspace root override | `/data/runtime` |
 
 Backend rules:
 
@@ -300,9 +299,9 @@ Backend rules:
 
 #### **Runtime Workspace And Environment**
 
-Both `docker` and `sandbox` now follow the same runtime workspace contract.
+Both `docker` and `sandbox` now follow the same fixed runtime workspace contract.
 
-Given a workspace root, VMDocker resolves the per-instance workspace as:
+Given the default workspace root, VMDocker resolves the per-instance workspace as:
 
 ```text
 <workspace-root>/sandbox_workspace/<pid>

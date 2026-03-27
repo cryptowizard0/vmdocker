@@ -67,7 +67,7 @@ func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.Run
 		Image:        imageInfo,
 		Sandbox: schema.SandboxSpec{
 			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "shell"),
-			Workspace: utils.GetTagsValueByDefault(schema.SandboxWorkspaceTag, tags, ""),
+			Workspace: "",
 			Network:   utils.GetTagsValueByDefault(schema.SandboxNetworkTag, tags, ""),
 			Name:      utils.GetTagsValueByDefault(schema.SandboxNameTag, tags, ""),
 			Command:   utils.GetTagsValueByDefault(schema.SandboxCommandTag, tags, ""),

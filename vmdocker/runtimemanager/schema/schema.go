@@ -17,13 +17,12 @@ const (
 )
 
 const (
-	RuntimeBackendTag   = "Runtime-Backend"
-	StartCommandTag     = "Start-Command"
-	SandboxAgentTag     = "Sandbox-Agent"
-	SandboxWorkspaceTag = "Sandbox-Workspace"
-	SandboxNetworkTag   = "Sandbox-Network"
-	SandboxNameTag      = "Sandbox-Name"
-	SandboxCommandTag   = "Sandbox-Command"
+	RuntimeBackendTag = "Runtime-Backend"
+	StartCommandTag   = "Start-Command"
+	SandboxAgentTag   = "Sandbox-Agent"
+	SandboxNetworkTag = "Sandbox-Network"
+	SandboxNameTag    = "Sandbox-Name"
+	SandboxCommandTag = "Sandbox-Command"
 )
 
 const (

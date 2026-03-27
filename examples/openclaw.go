@@ -17,7 +17,7 @@ var (
 	OpenclawModuleID = os.Getenv("OPENCLAW_MODULE_ID")
 )
 
-func buildOpenclawSpawnTags(model, provider, apiKey, sandboxWorkspace, gatewayToken, runtimeBackend string) []goarSchema.Tag {
+func buildOpenclawSpawnTags(model, provider, apiKey, gatewayToken, runtimeBackend string) []goarSchema.Tag {
 	defaultModel := GetEnvWith("OPENCLAW_DEFAULT_MODEL", model)
 	defaultProvider := GetEnvWith("OPENCLAW_DEFAULT_PROVIDER", provider)
 
@@ -28,7 +28,6 @@ func buildOpenclawSpawnTags(model, provider, apiKey, sandboxWorkspace, gatewayTo
 	tags = append(tags,
 		goarSchema.Tag{Name: "model", Value: model},
 		goarSchema.Tag{Name: "apiKey", Value: apiKey},
-		goarSchema.Tag{Name: "Sandbox-Workspace", Value: sandboxWorkspace},
 		goarSchema.Tag{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_TOKEN", Value: gatewayToken},
 		goarSchema.Tag{Name: "Runtime-Backend", Value: runtimeBackend},
 	)
@@ -49,7 +48,6 @@ func spawnOpenclaw() string {
 	openclawModel := GetEnvWith("OPENCLAW_MODEL", "")
 	openclawProvider := GetEnvWith("OPENCLAW_PROVIDER", "")
 	openclawAPIKey := os.Getenv("OPENCLAW_API_KEY")
-	sandboxWorkspace := GetEnvWith("OPENCLAW_SANDBOX_WORKSPACE", ".")
 	openclawGatewayToken := GetEnvWith("OPENCLAW_GATEWAY_TOKEN", "openclaw-test-token")
 	runtimeBackend := GetEnvWith("RUNTIME_BACKEND", "")
 
@@ -58,7 +56,7 @@ func spawnOpenclaw() string {
 	resp, err := s.Spawn(
 		OpenclawModuleID,
 		scheduler,
-		buildOpenclawSpawnTags(openclawModel, openclawProvider, openclawAPIKey, sandboxWorkspace, openclawGatewayToken, runtimeBackend),
+		buildOpenclawSpawnTags(openclawModel, openclawProvider, openclawAPIKey, openclawGatewayToken, runtimeBackend),
 	)
 	if err != nil {
 		fmt.Printf("[openclaw_spawn] failed after=%s err=%v\n", time.Since(start), err)

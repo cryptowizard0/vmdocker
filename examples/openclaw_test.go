@@ -10,7 +10,6 @@ func TestBuildOpenclawSpawnTags(t *testing.T) {
 		"kimi-coding/plan",
 		"zen",
 		"api-key-1",
-		".",
 		"gateway-token-1",
 		"sandbox",
 	)
@@ -19,7 +18,6 @@ func TestBuildOpenclawSpawnTags(t *testing.T) {
 		"provider":                             "zen",
 		"model":                                "kimi-coding/plan",
 		"apiKey":                               "api-key-1",
-		"Sandbox-Workspace":                    ".",
 		"Container-Env-OPENCLAW_DEFAULT_MODEL": "opencode-go/kimi-k2.5",
 		"Container-Env-OPENCLAW_DEFAULT_PROVIDER": "zen",
 		"Container-Env-OPENCLAW_GATEWAY_TOKEN":    "gateway-token-1",
@@ -50,7 +48,6 @@ func TestBuildOpenclawSpawnTagsWithoutProvider(t *testing.T) {
 		"opencode-go/kimi-k2.5",
 		"",
 		"",
-		".",
 		"gateway-token-1",
 		"",
 	)

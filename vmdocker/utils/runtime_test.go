@@ -39,6 +39,18 @@ func TestRuntimeSpecFromTags_IgnoresRuntimeBackendTag(t *testing.T) {
 	require.Equal(t, "chriswebber/docker-openclaw:v0.0.4", spec.Image.Name)
 }
 
+func TestRuntimeSpecFromTags_IgnoresSandboxWorkspaceTag(t *testing.T) {
+	spec, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
+		{Name: "Sandbox-Workspace", Value: "/tmp/override"},
+		{Name: vmdockerSchema.ImageNameTag, Value: "chriswebber/docker-openclaw:v0.0.4"},
+		{Name: vmdockerSchema.ImageIDTag, Value: "sha256:docker-template"},
+		{Name: vmdockerSchema.ImageSourceTag, Value: vmdockerSchema.ImageSourceModuleData},
+		{Name: vmdockerSchema.ImageArchiveTag, Value: vmdockerSchema.ImageArchiveDockerSaveGZ},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", spec.Sandbox.Workspace)
+}
+
 func TestRuntimeSpecFromTags_RejectsLegacyBuildModules(t *testing.T) {
 	_, err := RuntimeSpecFromTags(vmdockerSchema.ModuleFormat, []goarSchema.Tag{
 		{Name: "Build-Type", Value: "dockerfile"},
