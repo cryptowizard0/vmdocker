@@ -13,15 +13,12 @@ import (
 )
 
 var (
-	url = "http://127.0.0.1:8080"
+	url = GetEnvWith("VMDOCKER_URL", "http://127.0.0.1:8080")
 
-	prvKey     = "0x64dd2342616f385f3e8157cf7246cf394217e13e8f91b7d208e9f8b60e25ed1b"
-	signer, _  = goether.NewSigner(prvKey)
-	bundler, _ = goar.NewBundler(signer)
-	s          = sdk.NewFromBundler(url, bundler)
+	s *sdk.SDK
 
-	module    = "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU"
-	scheduler = "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51"
+	module    = GetEnvWith("VMDOCKER_MODULE_ID", "4sX9Uo5-Qk37yUOMLCMrwnm4S3Wfu3Fp7QCSRN0oeoU")
+	scheduler = GetEnvWith("VMDOCKER_SCHEDULER", "0x972AeD684D6f817e1b58AF70933dF1b4a75bfA51")
 
 	mainNode = registrySchema.Node{
 		Name: "test",
@@ -30,11 +27,30 @@ var (
 	}
 )
 
+func initExampleSDK() {
+	if s != nil {
+		return
+	}
+
+	prvKey := GetEnv("VMDOCKER_PRIVATE_KEY")
+	signer, err := goether.NewSigner(prvKey)
+	if err != nil {
+		panic(err)
+	}
+	bundler, err := goar.NewBundler(signer)
+	if err != nil {
+		panic(err)
+	}
+	s = sdk.NewFromBundler(url, bundler)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("please input cmd, ex: pingpong, sendMessage, spawn, eval, eval2, receive, receive2, reply, inbox, result, checkpoint, ollama, recover1, recover2, openclaw_spawn, openclaw_chat, openclaw_tg, openclaw_pair")
 		os.Exit(1)
 	}
+
+	initExampleSDK()
 
 	cmd := os.Args[1]
 	switch cmd {

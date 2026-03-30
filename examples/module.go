@@ -2,27 +2,51 @@ package main
 
 import (
 	"fmt"
-
-	vmdockerSchema "github.com/cryptowizard0/vmdocker/vmdocker/schema"
-	"github.com/hymatrix/hymx/schema"
-	arSchema "github.com/permadao/goar/schema"
+	"os"
+	"os/exec"
+	"path/filepath"
 )
 
 func genModule() {
-	// ex ModuleFormat: "org.type.1.0.0"
-	itemId, err := s.SaveModule([]byte{}, schema.Module{
-		Base:         schema.DefaultBaseModule,
-		ModuleFormat: vmdockerSchema.ModuleFormat,
-		Tags: []arSchema.Tag{
-			{Name: "Image-Name", Value: "chriswebber/docker-openclaw:v0.0.1"},
-			{Name: "Image-ID", Value: "sha256:85060d33695718db193d3e37d5d8d9c379ed76a21b6d471e96c5ae55c14dbf95"},
-			{Name: "Openclaw-Version", Value: "2026.3.1-beta.1"},
-		},
-	})
+	agentRepo, err := findVMDockerAgentRepo()
 	if err != nil {
-		fmt.Println("generate and save module failed, ", "err", err)
-		return
+		fmt.Printf("locate vmdocker_agent failed: %v\n", err)
+		os.Exit(1)
 	}
-	fmt.Println("generate and save module success, ", "id", itemId)
 
+	fmt.Printf("module generation has moved to vmdocker_agent, delegating to %s\n", agentRepo)
+	cmd := exec.Command("go", "run", "./cmd/module")
+	cmd.Dir = agentRepo
+	cmd.Env = os.Environ()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("run vmdocker_agent module generator failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func findVMDockerAgentRepo() (string, error) {
+	if repo := os.Getenv("VMDOCKER_AGENT_DIR"); repo != "" {
+		return filepath.Abs(repo)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	candidates := []string{
+		filepath.Join(wd, "../vmdocker_agent"),
+		filepath.Join(wd, "../../vmdocker_agent"),
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(filepath.Join(candidate, "cmd", "module", "main.go"))
+		if err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("set VMDOCKER_AGENT_DIR to the vmdocker_agent repository path")
 }

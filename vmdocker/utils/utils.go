@@ -2,8 +2,9 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 
-	"github.com/cryptowizard0/vmdocker/vmdocker/schema"
+	"github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 	hySchema "github.com/hymatrix/hymx/schema"
 	"github.com/hymatrix/hymx/utils"
 	goarSchema "github.com/permadao/goar/schema"
@@ -50,22 +51,111 @@ func BuildProcessTags(process hySchema.Process, nodeAddr string, tags []goarSche
 	return process, nil
 }
 
-// CheckModuleFormat validates that the module format:
-// - starts with "web.vmdocker-" prefix
-// - contains Image-Name and Image-ID tags
-func CheckModuleFormat(moduleFormat string, tags []goarSchema.Tag) error {
+func RuntimeSpecFromTags(moduleFormat string, tags []goarSchema.Tag) (schema.RuntimeSpec, error) {
 	if moduleFormat != schema.ModuleFormat {
-		return errors.New("module format is not " + schema.ModuleFormat)
+		return schema.RuntimeSpec{}, errors.New("module format is not " + schema.ModuleFormat)
 	}
 
-	imageName := utils.GetTagsValueByDefault("Image-Name", tags, "")
+	imageInfo, err := imageInfoFromTags(tags)
+	if err != nil {
+		return schema.RuntimeSpec{}, err
+	}
+
+	spec := schema.RuntimeSpec{
+		Backend:      "",
+		StartCommand: startCommandFromTags(tags),
+		Image:        imageInfo,
+		Sandbox: schema.SandboxSpec{
+			Agent:     utils.GetTagsValueByDefault(schema.SandboxAgentTag, tags, "shell"),
+			Workspace: "",
+			Network:   utils.GetTagsValueByDefault(schema.SandboxNetworkTag, tags, ""),
+			Name:      utils.GetTagsValueByDefault(schema.SandboxNameTag, tags, ""),
+			Command:   utils.GetTagsValueByDefault(schema.SandboxCommandTag, tags, ""),
+		},
+	}
+
+	return spec, nil
+}
+
+func RuntimeSpecFromModuleAndSpawnTags(moduleFormat string, moduleTags, spawnTags []goarSchema.Tag) (schema.RuntimeSpec, error) {
+	spec, err := RuntimeSpecFromTags(moduleFormat, moduleTags)
+	if err != nil {
+		return schema.RuntimeSpec{}, err
+	}
+
+	backend := runtimeBackendFromTags(spawnTags)
+	if backend != "" {
+		switch backend {
+		case schema.RuntimeBackendDocker, schema.RuntimeBackendSandbox:
+			spec.Backend = backend
+		default:
+			return schema.RuntimeSpec{}, errors.New("unsupported runtime backend: " + backend)
+		}
+	}
+
+	if startCommand := startCommandFromTags(spawnTags); startCommand != "" {
+		spec.StartCommand = startCommand
+	}
+
+	return spec, nil
+}
+
+func runtimeBackendFromTags(tags []goarSchema.Tag) string {
+	for i := len(tags) - 1; i >= 0; i-- {
+		if tags[i].Name == schema.RuntimeBackendTag {
+			return tags[i].Value
+		}
+	}
+	return ""
+}
+
+func startCommandFromTags(tags []goarSchema.Tag) string {
+	for i := len(tags) - 1; i >= 0; i-- {
+		if tags[i].Name == schema.StartCommandTag {
+			return tags[i].Value
+		}
+	}
+	return ""
+}
+
+func imageInfoFromTags(tags []goarSchema.Tag) (schema.ImageInfo, error) {
+	if buildType := utils.GetTagsValueByDefault("Build-Type", tags, ""); buildType != "" {
+		return schema.ImageInfo{}, errors.New("Build-Type modules are no longer supported")
+	}
+
+	imageName := utils.GetTagsValueByDefault(schema.ImageNameTag, tags, "")
 	if imageName == "" {
-		return errors.New("Image-Name is empty")
+		return schema.ImageInfo{}, errors.New(schema.ImageNameTag + " is empty")
 	}
 
-	imageID := utils.GetTagsValueByDefault("Image-ID", tags, "")
+	imageID := utils.GetTagsValueByDefault(schema.ImageIDTag, tags, "")
 	if imageID == "" {
-		return errors.New("Image-ID is empty")
+		return schema.ImageInfo{}, errors.New(schema.ImageIDTag + " is empty")
+	}
+
+	source := utils.GetTagsValueByDefault(schema.ImageSourceTag, tags, "")
+	if source != schema.ImageSourceModuleData {
+		return schema.ImageInfo{}, fmt.Errorf("%s must be %s", schema.ImageSourceTag, schema.ImageSourceModuleData)
+	}
+
+	archiveFormat := utils.GetTagsValueByDefault(schema.ImageArchiveTag, tags, "")
+	if archiveFormat != schema.ImageArchiveDockerSaveGZ {
+		return schema.ImageInfo{}, fmt.Errorf("%s must be %s", schema.ImageArchiveTag, schema.ImageArchiveDockerSaveGZ)
+	}
+
+	return schema.ImageInfo{
+		Name:          imageName,
+		SHA:           imageID,
+		Source:        source,
+		ArchiveFormat: archiveFormat,
+	}, nil
+}
+
+// CheckModuleFormat validates the module configuration for the selected runtime backend.
+func CheckModuleFormat(moduleFormat string, tags []goarSchema.Tag) error {
+	_, err := RuntimeSpecFromTags(moduleFormat, tags)
+	if err != nil {
+		return err
 	}
 
 	return nil
