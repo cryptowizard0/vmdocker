@@ -61,12 +61,14 @@ type RuntimeSpec struct {
 }
 
 type InstanceInfo struct {
-	ID        string
-	Name      string
-	Port      int
-	Status    string
-	CreateAt  time.Time
-	Backend   string
-	Agent     string
-	Workspace string
+	ID          string
+	Name        string
+	Port        int
+	Status      string
+	CreateAt    time.Time
+	Backend     string
+	Agent       string
+	Workspace   string
+	RuntimeSpec RuntimeSpec
+	RuntimeEnv  []string
 }

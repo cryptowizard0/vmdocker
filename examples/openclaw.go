@@ -29,8 +29,8 @@ func buildOpenclawSpawnTags(model, provider, apiKey, gatewayToken, runtimeBacken
 		goarSchema.Tag{Name: "model", Value: model},
 		goarSchema.Tag{Name: "apiKey", Value: apiKey},
 		goarSchema.Tag{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_GATEWAY_TOKEN", Value: gatewayToken},
-		goarSchema.Tag{Name: "Runtime-Backend", Value: runtimeBackend},
 	)
+	tags = append(tags, runtimeBackendTags(runtimeBackend)...)
 	if defaultModel != "" {
 		tags = append(tags, goarSchema.Tag{Name: utils.ContainerEnvTagPrefix + "OPENCLAW_DEFAULT_MODEL", Value: defaultModel})
 	}

@@ -71,6 +71,15 @@ func TestSandboxManagerCreateAndStartInstanceUsesTemplateWorkflow(t *testing.T) 
 	if !strings.Contains(log, "-e OPENCLAW_AGENT_WORKSPACE="+filepath.Join(expectedWorkspace, ".openclaw", "workspace")) {
 		t.Fatalf("expected sandbox exec to inject OPENCLAW_AGENT_WORKSPACE, got:\n%s", log)
 	}
+	if !strings.Contains(log, "-e VMDOCKER_RUNTIME_WORKSPACE="+expectedWorkspace) {
+		t.Fatalf("expected sandbox exec to inject VMDOCKER_RUNTIME_WORKSPACE, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e VMDOCKER_RUNTIME_HOME="+filepath.Join(expectedWorkspace, ".home")) {
+		t.Fatalf("expected sandbox exec to inject VMDOCKER_RUNTIME_HOME, got:\n%s", log)
+	}
+	if !strings.Contains(log, "-e VMDOCKER_AGENT_WORKSPACE="+filepath.Join(expectedWorkspace, "workspace")) {
+		t.Fatalf("expected sandbox exec to inject VMDOCKER_AGENT_WORKSPACE, got:\n%s", log)
+	}
 	if !strings.Contains(log, "-e HOME="+filepath.Join(expectedWorkspace, ".home")) {
 		t.Fatalf("expected sandbox exec to inject HOME, got:\n%s", log)
 	}
@@ -301,6 +310,9 @@ func TestAppendRuntimePersistenceEnv(t *testing.T) {
 		"OPENCLAW_HOME=/tmp/workspace/sandbox_workspace/pid-1",
 		"OPENCLAW_CONFIG_PATH=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/openclaw.json",
 		"OPENCLAW_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/workspace",
+		"VMDOCKER_RUNTIME_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1",
+		"VMDOCKER_RUNTIME_HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
+		"VMDOCKER_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/workspace",
 		"HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
 		"TMPDIR=/tmp/workspace/sandbox_workspace/pid-1/.tmp",
 		"XDG_CONFIG_HOME=/tmp/workspace/sandbox_workspace/pid-1/.xdg/config",
@@ -337,15 +349,18 @@ func TestAppendRuntimePersistenceEnvRespectsExplicitDirectoryEnv(t *testing.T) {
 		"XDG_CACHE_HOME=/custom/xdg/cache",
 		"XDG_STATE_HOME=/custom/xdg/state",
 		"OPENCLAW_AGENT_WORKSPACE=/custom/agent-workspace",
+		"VMDOCKER_RUNTIME_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1",
+		"VMDOCKER_RUNTIME_HOME=/custom/home",
+		"VMDOCKER_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/workspace",
 	} {
 		if !strings.Contains(full, item) {
 			t.Fatalf("expected explicit env %q in %v", item, env)
 		}
 	}
-	if strings.Contains(full, workspace+"/.home") {
+	if containsEnv(env, "HOME", workspace+"/.home") {
 		t.Fatalf("unexpected default HOME in %v", env)
 	}
-	if strings.Contains(full, "OPENCLAW_HOME="+workspace) {
+	if containsEnv(env, "OPENCLAW_HOME", workspace) {
 		t.Fatalf("unexpected default OPENCLAW_HOME in %v", env)
 	}
 }
@@ -358,6 +373,16 @@ func TestAppendRuntimePersistenceEnvDerivesConfigFromExplicitStateDir(t *testing
 	if !strings.Contains(full, "OPENCLAW_CONFIG_PATH=/custom/state/openclaw.json") {
 		t.Fatalf("expected config path to derive from explicit state dir, got %v", env)
 	}
+}
+
+func containsEnv(env []string, key, value string) bool {
+	want := key + "=" + value
+	for _, item := range env {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSandboxManagerRemoveInstancePreservesWorkspace(t *testing.T) {

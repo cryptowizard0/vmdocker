@@ -28,17 +28,26 @@ const defaultRuntimeReadyTimeout = 10 * time.Minute
 const workspaceCheckpointFormatV1 = "vmdocker.workspace.v1"
 
 type workspaceCheckpoint struct {
-	Format           string `json:"format"`
-	WorkspaceArchive string `json:"workspaceArchive"`
-	RuntimeState     string `json:"runtimeState"`
-	Backend          string `json:"backend"`
+	Format                  string                    `json:"format"`
+	WorkspaceArchive        string                    `json:"workspaceArchive"`
+	WorkspaceCheckpointName string                    `json:"workspaceCheckpointName,omitempty"`
+	RuntimeState            string                    `json:"runtimeState"`
+	Backend                 string                    `json:"backend"`
+	RuntimeSpec             runtimeSchema.RuntimeSpec `json:"runtimeSpec,omitempty"`
+	RuntimeEnv              []string                  `json:"runtimeEnv,omitempty"`
 }
 
 type restoreRollbackState struct {
 	instance      runtimeSchema.InstanceInfo
 	runtimeSpec   runtimeSchema.RuntimeSpec
+	runtimeEnv    []string
 	runtimeState  string
 	runtimeManger runtimemanager.IRuntimeManager
+}
+
+type runtimeLaunchConfig struct {
+	runtimeSpec runtimeSchema.RuntimeSpec
+	runtimeEnv  []string
 }
 
 func handleRestoreFailure(rollbackWorkspace func() error, restorePreviousRuntime func() error, shouldRestorePreviousRuntime bool, previousRuntimeRestored *bool) {
@@ -53,6 +62,56 @@ func handleRestoreFailure(rollbackWorkspace func() error, restorePreviousRuntime
 		return
 	}
 	*previousRuntimeRestored = true
+}
+
+func cloneRuntimeSpec(spec runtimeSchema.RuntimeSpec) runtimeSchema.RuntimeSpec {
+	return runtimeSchema.RuntimeSpec{
+		Backend:      spec.Backend,
+		StartCommand: spec.StartCommand,
+		Image: runtimeSchema.ImageInfo{
+			Name:          spec.Image.Name,
+			SHA:           spec.Image.SHA,
+			Source:        spec.Image.Source,
+			ArchiveFormat: spec.Image.ArchiveFormat,
+		},
+		Sandbox: runtimeSchema.SandboxSpec{
+			Agent:     spec.Sandbox.Agent,
+			Workspace: spec.Sandbox.Workspace,
+			Network:   spec.Sandbox.Network,
+			Name:      spec.Sandbox.Name,
+			Command:   spec.Sandbox.Command,
+		},
+	}
+}
+
+func cloneRuntimeEnv(env []string) []string {
+	return append([]string(nil), env...)
+}
+
+func checkpointWorkspaceName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "workspace"
+	}
+	return name
+}
+
+func normalizeRuntimeSpecWorkspaceRoot(spec runtimeSchema.RuntimeSpec, targetWorkspace string) runtimeSchema.RuntimeSpec {
+	spec = cloneRuntimeSpec(spec)
+	if strings.TrimSpace(targetWorkspace) != "" {
+		spec.Sandbox.Workspace = runtimeWorkspaceRootFromPath(targetWorkspace)
+	}
+	return spec
+}
+
+func hasRuntimeSpec(spec runtimeSchema.RuntimeSpec) bool {
+	return strings.TrimSpace(spec.Backend) != "" ||
+		strings.TrimSpace(spec.StartCommand) != "" ||
+		strings.TrimSpace(spec.Image.Name) != "" ||
+		strings.TrimSpace(spec.Image.SHA) != "" ||
+		strings.TrimSpace(spec.Sandbox.Agent) != "" ||
+		strings.TrimSpace(spec.Sandbox.Command) != "" ||
+		strings.TrimSpace(spec.Sandbox.Network) != "" ||
+		strings.TrimSpace(spec.Sandbox.Name) != ""
 }
 
 func Spawn(env vmmSchema.Env) (vm vmmSchema.Vm, err error) {
@@ -191,30 +250,146 @@ func (v *VmDocker) Checkpoint() (string, error) {
 		return "", fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
 	}
 
+	launchConfig, err := v.currentLaunchConfig()
+	if err != nil {
+		return "", err
+	}
+
 	runtimeManager, err := v.getRuntimeManager()
 	if err != nil {
 		return "", err
 	}
 
+	checkpointName := checkpointWorkspaceName("")
 	runtimeState, err := v.runtimeCheckpoint()
 	if err != nil {
 		return "", err
 	}
-	workspaceArchive, err := runtimeManager.Checkpoint(context.Background(), v.pid, "workspace")
+	workspaceArchive, err := v.checkpointWorkspaceArchive(context.Background(), runtimeManager, checkpointName, launchConfig, runtimeState)
 	if err != nil {
 		return "", err
 	}
 
 	payload, err := json.Marshal(workspaceCheckpoint{
-		Format:           workspaceCheckpointFormatV1,
-		WorkspaceArchive: workspaceArchive,
-		RuntimeState:     runtimeState,
-		Backend:          v.instanceInfo.Backend,
+		Format:                  workspaceCheckpointFormatV1,
+		WorkspaceArchive:        workspaceArchive,
+		WorkspaceCheckpointName: checkpointName,
+		RuntimeState:            runtimeState,
+		Backend:                 launchConfig.runtimeSpec.Backend,
+		RuntimeSpec:             cloneRuntimeSpec(launchConfig.runtimeSpec),
+		RuntimeEnv:              cloneRuntimeEnv(launchConfig.runtimeEnv),
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal workspace checkpoint failed: %w", err)
 	}
 	return string(payload), nil
+}
+
+func (v *VmDocker) currentLaunchConfig() (runtimeLaunchConfig, error) {
+	if v.instanceInfo == nil {
+		return runtimeLaunchConfig{}, fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
+	}
+	if hasRuntimeSpec(v.instanceInfo.RuntimeSpec) {
+		return runtimeLaunchConfig{
+			runtimeSpec: normalizeRuntimeSpecWorkspaceRoot(v.instanceInfo.RuntimeSpec, v.instanceInfo.Workspace),
+			runtimeEnv:  cloneRuntimeEnv(v.instanceInfo.RuntimeEnv),
+		}, nil
+	}
+
+	runtimeSpec, err := utils.RuntimeSpecFromModuleAndSpawnTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags, v.Env.Process.Tags)
+	if err != nil {
+		return runtimeLaunchConfig{}, err
+	}
+	runtimeSpec.Backend = v.instanceInfo.Backend
+	runtimeSpec = normalizeRuntimeSpecWorkspaceRoot(runtimeSpec, v.instanceInfo.Workspace)
+	return runtimeLaunchConfig{
+		runtimeSpec: runtimeSpec,
+		runtimeEnv:  utils.ContainerEnvFromTags(v.Env.Process.Tags),
+	}, nil
+}
+
+func resolveRestoreLaunchConfig(checkpoint workspaceCheckpoint, fallbackSpec runtimeSchema.RuntimeSpec, fallbackEnv []goarSchema.Tag, targetWorkspace string) (runtimeLaunchConfig, error) {
+	spec := checkpoint.RuntimeSpec
+	fromCheckpointSpec := hasRuntimeSpec(spec)
+	if !fromCheckpointSpec {
+		spec = cloneRuntimeSpec(fallbackSpec)
+	}
+	if checkpoint.Backend != "" {
+		if fromCheckpointSpec && spec.Backend != "" && spec.Backend != checkpoint.Backend {
+			return runtimeLaunchConfig{}, fmt.Errorf("checkpoint backend mismatch: runtimeSpec=%s backend=%s", spec.Backend, checkpoint.Backend)
+		}
+		spec.Backend = checkpoint.Backend
+	}
+	if spec.Backend == "" {
+		return runtimeLaunchConfig{}, fmt.Errorf("checkpoint runtime backend is empty")
+	}
+	spec = normalizeRuntimeSpecWorkspaceRoot(spec, targetWorkspace)
+
+	runtimeEnv := checkpoint.RuntimeEnv
+	if len(runtimeEnv) == 0 {
+		runtimeEnv = utils.ContainerEnvFromTags(fallbackEnv)
+	}
+	return runtimeLaunchConfig{
+		runtimeSpec: spec,
+		runtimeEnv:  cloneRuntimeEnv(runtimeEnv),
+	}, nil
+}
+
+func (v *VmDocker) restoreRuntimeLaunch(ctx context.Context, runtimeManager runtimemanager.IRuntimeManager, launchConfig runtimeLaunchConfig, runtimeState string) error {
+	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, launchConfig.runtimeSpec, launchConfig.runtimeEnv)
+	if err != nil {
+		return fmt.Errorf("create runtime failed: %w", err)
+	}
+	v.instanceInfo = instanceInfo
+
+	restoreFailed := true
+	defer func() {
+		if restoreFailed && v.instanceInfo != nil {
+			_ = runtimeManager.RemoveInstance(ctx, v.pid)
+			v.instanceInfo = nil
+		}
+	}()
+
+	if err := runtimeManager.StartInstance(ctx, v.pid); err != nil {
+		return fmt.Errorf("start runtime failed: %w", err)
+	}
+	if err := v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout); err != nil {
+		return fmt.Errorf("runtime not ready: %w", err)
+	}
+	if err := v.runtimeRestore(runtimeState); err != nil {
+		return fmt.Errorf("restore runtime state failed: %w", err)
+	}
+
+	restoreFailed = false
+	return nil
+}
+
+func (v *VmDocker) checkpointWorkspaceArchive(ctx context.Context, runtimeManager runtimemanager.IRuntimeManager, checkpointName string, launchConfig runtimeLaunchConfig, runtimeState string) (string, error) {
+	if v.instanceInfo == nil {
+		return "", fmt.Errorf("instanceInfo is nil, pid: %s", v.pid)
+	}
+
+	currentInstance := *v.instanceInfo
+	if err := runtimeManager.RemoveInstance(ctx, v.pid); err != nil {
+		return "", fmt.Errorf("remove runtime for checkpoint failed: %w", err)
+	}
+	v.instanceInfo = nil
+
+	restoreCurrentRuntime := func(cause error) error {
+		if restoreErr := v.restoreRuntimeLaunch(ctx, runtimeManager, launchConfig, runtimeState); restoreErr != nil {
+			return fmt.Errorf("%w; restore current runtime failed: %v", cause, restoreErr)
+		}
+		return cause
+	}
+
+	workspaceArchive, err := runtimemanager.CheckpointRuntimeWorkspace(currentInstance.Workspace, checkpointName)
+	if err != nil {
+		return "", restoreCurrentRuntime(err)
+	}
+	if err := v.restoreRuntimeLaunch(ctx, runtimeManager, launchConfig, runtimeState); err != nil {
+		return "", fmt.Errorf("restore current runtime after checkpoint failed: %w", err)
+	}
+	return workspaceArchive, nil
 }
 
 func (v *VmDocker) Restore(snapshot string) error {
@@ -227,25 +402,32 @@ func (v *VmDocker) Restore(snapshot string) error {
 	}
 
 	ctx := context.Background()
-	runtimeSpec, err := utils.RuntimeSpecFromModuleAndSpawnTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags, v.Env.Process.Tags)
-	if err != nil {
-		return err
-	}
-	runtimeManager, err := runtimemanager.GetRuntimeManager(runtimeSpec.Backend)
+	fallbackRuntimeSpec, err := utils.RuntimeSpecFromModuleAndSpawnTags(v.Env.Module.ModuleFormat, v.Env.Module.Tags, v.Env.Process.Tags)
 	if err != nil {
 		return err
 	}
 
-	if err := ensureModuleImageAvailable(ctx, v.Env.Process.Module, runtimeSpec.Image); err != nil {
+	targetWorkspace, err := v.restoreTargetWorkspace(fallbackRuntimeSpec)
+	if err != nil {
+		return err
+	}
+	restoreLaunchConfig, err := resolveRestoreLaunchConfig(checkpoint, fallbackRuntimeSpec, v.Env.Process.Tags, targetWorkspace)
+	if err != nil {
+		return err
+	}
+	runtimeManager, err := runtimemanager.GetRuntimeManager(restoreLaunchConfig.runtimeSpec.Backend)
+	if err != nil {
+		return err
+	}
+	if err := ensureModuleImageAvailable(ctx, v.Env.Process.Module, restoreLaunchConfig.runtimeSpec.Image); err != nil {
 		return fmt.Errorf("prepare module image failed: %w", err)
 	}
-	containerEnv := utils.ContainerEnvFromTags(v.Env.Process.Tags)
 
-	targetWorkspace, err := v.restoreTargetWorkspace(runtimeSpec)
-	if err != nil {
-		return err
-	}
-	stagedWorkspace, cleanupStagedWorkspace, err := runtimemanager.StageRuntimeWorkspaceRestore(targetWorkspace, checkpoint.WorkspaceArchive)
+	stagedWorkspace, cleanupStagedWorkspace, err := runtimemanager.StageRuntimeWorkspaceRestore(
+		targetWorkspace,
+		checkpointWorkspaceName(checkpoint.WorkspaceCheckpointName),
+		checkpoint.WorkspaceArchive,
+	)
 	if err != nil {
 		return err
 	}
@@ -263,7 +445,7 @@ func (v *VmDocker) Restore(snapshot string) error {
 		handleRestoreFailure(
 			rollbackWorkspace,
 			func() error {
-				return v.restorePreviousRuntime(ctx, rollbackState, containerEnv)
+				return v.restorePreviousRuntime(ctx, rollbackState)
 			},
 			rollbackState != nil && previousRuntimeRemoved,
 			&previousRuntimeRestored,
@@ -280,12 +462,14 @@ func (v *VmDocker) Restore(snapshot string) error {
 			return err
 		}
 		currentInstance := *v.instanceInfo
-		rollbackSpec := runtimeSpec
-		rollbackSpec.Backend = currentInstance.Backend
-		rollbackSpec.Sandbox.Workspace = runtimeWorkspaceRootFromPath(currentInstance.Workspace)
+		rollbackLaunchConfig, err := v.currentLaunchConfig()
+		if err != nil {
+			return err
+		}
 		rollbackState = &restoreRollbackState{
 			instance:      currentInstance,
-			runtimeSpec:   rollbackSpec,
+			runtimeSpec:   rollbackLaunchConfig.runtimeSpec,
+			runtimeEnv:    rollbackLaunchConfig.runtimeEnv,
 			runtimeState:  currentRuntimeState,
 			runtimeManger: currentRuntimeManager,
 		}
@@ -302,7 +486,7 @@ func (v *VmDocker) Restore(snapshot string) error {
 	}
 
 	v.runtimeManager = runtimeManager
-	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, runtimeSpec, containerEnv)
+	instanceInfo, err := runtimeManager.CreateInstance(ctx, v.pid, restoreLaunchConfig.runtimeSpec, restoreLaunchConfig.runtimeEnv)
 	if err != nil {
 		return err
 	}
@@ -681,27 +865,16 @@ func runtimeWorkspaceRootFromPath(workspace string) string {
 	return filepath.Dir(filepath.Dir(workspace))
 }
 
-func (v *VmDocker) restorePreviousRuntime(ctx context.Context, rollbackState *restoreRollbackState, containerEnv []string) error {
+func (v *VmDocker) restorePreviousRuntime(ctx context.Context, rollbackState *restoreRollbackState) error {
 	if rollbackState == nil {
 		return nil
 	}
 
 	v.runtimeManager = rollbackState.runtimeManger
-	instanceInfo, err := rollbackState.runtimeManger.CreateInstance(ctx, v.pid, rollbackState.runtimeSpec, containerEnv)
-	if err != nil {
-		return fmt.Errorf("rollback create runtime failed: %w", err)
-	}
-	v.instanceInfo = instanceInfo
-	if err := rollbackState.runtimeManger.StartInstance(ctx, v.pid); err != nil {
-		return fmt.Errorf("rollback start runtime failed: %w", err)
-	}
-	if err := v.waitForContainerReady(ctx, defaultRuntimeReadyTimeout); err != nil {
-		return fmt.Errorf("rollback runtime not ready: %w", err)
-	}
-	if err := v.runtimeRestore(rollbackState.runtimeState); err != nil {
-		return fmt.Errorf("rollback runtime restore failed: %w", err)
-	}
-	return nil
+	return v.restoreRuntimeLaunch(ctx, rollbackState.runtimeManger, runtimeLaunchConfig{
+		runtimeSpec: rollbackState.runtimeSpec,
+		runtimeEnv:  rollbackState.runtimeEnv,
+	}, rollbackState.runtimeState)
 }
 
 func shellEscape(value string) string {

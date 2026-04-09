@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-
-	goarSchema "github.com/permadao/goar/schema"
 )
 
 func spawn() {
+	runtimeBackend := GetEnvWith("RUNTIME_BACKEND", "")
 	res, err := s.Spawn(
 		module,
 		scheduler,
-		[]goarSchema.Tag{},
+		runtimeBackendTags(runtimeBackend),
 	)
 	fmt.Printf("res: %#v, err: %v\n", res, err)
 }

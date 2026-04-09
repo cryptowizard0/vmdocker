@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	runtimeSchema "github.com/cryptowizard0/vmdocker/vmdocker/runtimemanager/schema"
 )
 
 func TestBuildSandboxCurlCommandFromFile(t *testing.T) {
@@ -19,10 +21,20 @@ func TestBuildSandboxCurlCommandFromFile(t *testing.T) {
 
 func TestWorkspaceCheckpointJSONRoundTrip(t *testing.T) {
 	raw, err := json.Marshal(workspaceCheckpoint{
-		Format:           workspaceCheckpointFormatV1,
-		WorkspaceArchive: "archive",
-		RuntimeState:     `{"format":"openclaw.runtime.v1","sessionId":"sess-1"}`,
-		Backend:          "docker",
+		Format:                  workspaceCheckpointFormatV1,
+		WorkspaceArchive:        "archive",
+		WorkspaceCheckpointName: "workspace",
+		RuntimeState:            `{"format":"openclaw.runtime.v1","sessionId":"sess-1"}`,
+		Backend:                 "docker",
+		RuntimeSpec: runtimeSchema.RuntimeSpec{
+			Backend:      "docker",
+			StartCommand: "/app/start-runtime.sh",
+			Image: runtimeSchema.ImageInfo{
+				Name: "image:test",
+				SHA:  "sha256:test",
+			},
+		},
+		RuntimeEnv: []string{"RUNTIME_TYPE=claude"},
 	})
 	if err != nil {
 		t.Fatalf("marshal checkpoint failed: %v", err)
@@ -37,6 +49,15 @@ func TestWorkspaceCheckpointJSONRoundTrip(t *testing.T) {
 	}
 	if decoded.Backend != "docker" {
 		t.Fatalf("backend = %q, want %q", decoded.Backend, "docker")
+	}
+	if decoded.WorkspaceCheckpointName != "workspace" {
+		t.Fatalf("workspace checkpoint name = %q, want %q", decoded.WorkspaceCheckpointName, "workspace")
+	}
+	if decoded.RuntimeSpec.Image.Name != "image:test" {
+		t.Fatalf("runtime spec image = %q, want %q", decoded.RuntimeSpec.Image.Name, "image:test")
+	}
+	if len(decoded.RuntimeEnv) != 1 || decoded.RuntimeEnv[0] != "RUNTIME_TYPE=claude" {
+		t.Fatalf("runtime env = %v, want %v", decoded.RuntimeEnv, []string{"RUNTIME_TYPE=claude"})
 	}
 	if !strings.Contains(decoded.RuntimeState, `"sessionId":"sess-1"`) {
 		t.Fatalf("runtime state missing session id: %s", decoded.RuntimeState)
