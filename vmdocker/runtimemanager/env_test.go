@@ -104,6 +104,9 @@ func TestDockerAndSandboxShareRuntimeEnvironmentContract(t *testing.T) {
 		"OPENCLAW_HOME=/tmp/workspace/sandbox_workspace/pid-1",
 		"OPENCLAW_CONFIG_PATH=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/openclaw.json",
 		"OPENCLAW_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/.openclaw/workspace",
+		"VMDOCKER_RUNTIME_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1",
+		"VMDOCKER_RUNTIME_HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
+		"VMDOCKER_AGENT_WORKSPACE=/tmp/workspace/sandbox_workspace/pid-1/workspace",
 		"HOME=/tmp/workspace/sandbox_workspace/pid-1/.home",
 		"TMPDIR=/tmp/workspace/sandbox_workspace/pid-1/.tmp",
 		"XDG_CONFIG_HOME=/tmp/workspace/sandbox_workspace/pid-1/.xdg/config",
@@ -128,7 +131,7 @@ func TestCheckpointAndRestoreRuntimeWorkspaceRoundTrip(t *testing.T) {
 		t.Fatalf("write workspace file failed: %v", err)
 	}
 
-	snapshot, err := checkpointRuntimeWorkspace(workspace)
+	snapshot, err := checkpointRuntimeWorkspace(workspace, "test-checkpoint")
 	if err != nil {
 		t.Fatalf("checkpointRuntimeWorkspace failed: %v", err)
 	}
@@ -143,7 +146,7 @@ func TestCheckpointAndRestoreRuntimeWorkspaceRoundTrip(t *testing.T) {
 		t.Fatalf("write extra file failed: %v", err)
 	}
 
-	if err := restoreRuntimeWorkspace(workspace, snapshot); err != nil {
+	if err := restoreRuntimeWorkspace(workspace, "test-checkpoint", snapshot); err != nil {
 		t.Fatalf("restoreRuntimeWorkspace failed: %v", err)
 	}
 
@@ -160,8 +163,25 @@ func TestCheckpointAndRestoreRuntimeWorkspaceRoundTrip(t *testing.T) {
 }
 
 func TestRestoreRuntimeWorkspaceRejectsEmptySnapshot(t *testing.T) {
-	if err := restoreRuntimeWorkspace(filepath.Join(t.TempDir(), "workspace"), ""); err == nil {
+	if err := restoreRuntimeWorkspace(filepath.Join(t.TempDir(), "workspace"), "workspace", ""); err == nil {
 		t.Fatalf("expected empty snapshot restore to fail")
+	}
+}
+
+func TestRestoreRuntimeWorkspaceRejectsCheckpointNameMismatch(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := ensureRuntimeWorkspace("pid-checkpoint-name", root)
+	if err != nil {
+		t.Fatalf("ensureRuntimeWorkspace failed: %v", err)
+	}
+
+	snapshot, err := checkpointRuntimeWorkspace(workspace, "first")
+	if err != nil {
+		t.Fatalf("checkpointRuntimeWorkspace failed: %v", err)
+	}
+
+	if err := restoreRuntimeWorkspace(workspace, "second", snapshot); err == nil {
+		t.Fatalf("expected checkpoint name mismatch to fail")
 	}
 }
 
@@ -177,7 +197,7 @@ func TestStageRuntimeWorkspaceRestoreDoesNotModifyOriginalOnInvalidSnapshot(t *t
 		t.Fatalf("write original file failed: %v", err)
 	}
 
-	if _, _, err := stageRuntimeWorkspaceRestore(workspace, "not-base64"); err == nil {
+	if _, _, err := stageRuntimeWorkspaceRestore(workspace, "workspace", "not-base64"); err == nil {
 		t.Fatalf("expected invalid snapshot to fail")
 	}
 

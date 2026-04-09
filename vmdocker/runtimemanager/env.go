@@ -1,6 +1,7 @@
 package runtimemanager
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,23 +12,33 @@ import (
 )
 
 const (
-	openclawStateDirName  = ".openclaw"
-	openclawConfigFile    = "openclaw.json"
-	openclawWorkspaceDir  = "workspace"
-	sandboxHomeDirName    = ".home"
-	sandboxTmpDirName     = ".tmp"
-	sandboxXDGDirName     = ".xdg"
-	envOpenclawHome       = "OPENCLAW_HOME"
-	envOpenclawStateDir   = "OPENCLAW_STATE_DIR"
-	envOpenclawConfigPath = "OPENCLAW_CONFIG_PATH"
-	envOpenclawWorkspace  = "OPENCLAW_AGENT_WORKSPACE"
-	envHome               = "HOME"
-	envTmpDir             = "TMPDIR"
-	envXDGConfigHome      = "XDG_CONFIG_HOME"
-	envXDGCacheHome       = "XDG_CACHE_HOME"
-	envXDGStateHome       = "XDG_STATE_HOME"
-	runtimeWorkspaceDir   = "sandbox_workspace"
+	openclawStateDirName               = ".openclaw"
+	openclawConfigFile                 = "openclaw.json"
+	openclawWorkspaceDir               = "workspace"
+	sandboxHomeDirName                 = ".home"
+	sandboxTmpDirName                  = ".tmp"
+	sandboxXDGDirName                  = ".xdg"
+	envOpenclawHome                    = "OPENCLAW_HOME"
+	envOpenclawStateDir                = "OPENCLAW_STATE_DIR"
+	envOpenclawConfigPath              = "OPENCLAW_CONFIG_PATH"
+	envOpenclawWorkspace               = "OPENCLAW_AGENT_WORKSPACE"
+	envRuntimeWorkspace                = "VMDOCKER_RUNTIME_WORKSPACE"
+	envRuntimeHome                     = "VMDOCKER_RUNTIME_HOME"
+	envRuntimeAgentWork                = "VMDOCKER_AGENT_WORKSPACE"
+	envHome                            = "HOME"
+	envTmpDir                          = "TMPDIR"
+	envXDGConfigHome                   = "XDG_CONFIG_HOME"
+	envXDGCacheHome                    = "XDG_CACHE_HOME"
+	envXDGStateHome                    = "XDG_STATE_HOME"
+	runtimeWorkspaceDir                = "sandbox_workspace"
+	runtimeWorkspaceCheckpointFormatV1 = "vmdocker.runtime-workspace.v1"
 )
+
+type runtimeWorkspaceCheckpoint struct {
+	Format  string `json:"format"`
+	Name    string `json:"name"`
+	Archive string `json:"archive"`
+}
 
 func ensureRuntimeWorkspace(pid, root string) (string, error) {
 	workspace, err := resolveRuntimeWorkspace(pid, root)
@@ -71,6 +82,10 @@ func resolveRuntimeWorkspace(pid, root string) (string, error) {
 	return filepath.Join(root, runtimeWorkspaceDir, pid), nil
 }
 
+func runtimeWorkspaceRootFromPath(workspace string) string {
+	return filepath.Dir(filepath.Dir(workspace))
+}
+
 func appendRuntimePersistenceEnv(runtimeEnv []string, workspace string) []string {
 	env := append([]string(nil), runtimeEnv...)
 	if workspace == "" {
@@ -84,6 +99,7 @@ func appendRuntimePersistenceEnv(runtimeEnv []string, workspace string) []string
 	xdgConfigHome := envValue(env, envXDGConfigHome, filepath.Join(workspace, sandboxXDGDirName, "config"))
 	xdgCacheHome := envValue(env, envXDGCacheHome, filepath.Join(workspace, sandboxXDGDirName, "cache"))
 	xdgStateHome := envValue(env, envXDGStateHome, filepath.Join(workspace, sandboxXDGDirName, "state"))
+	runtimeAgentWorkspace := envValue(env, envRuntimeAgentWork, filepath.Join(workspace, openclawWorkspaceDir))
 
 	if !hasEnvKey(env, envOpenclawStateDir) {
 		env = append(env, envOpenclawStateDir+"="+stateDir)
@@ -96,6 +112,15 @@ func appendRuntimePersistenceEnv(runtimeEnv []string, workspace string) []string
 	}
 	if !hasEnvKey(env, envOpenclawWorkspace) {
 		env = append(env, envOpenclawWorkspace+"="+agentWorkspace)
+	}
+	if !hasEnvKey(env, envRuntimeWorkspace) {
+		env = append(env, envRuntimeWorkspace+"="+workspace)
+	}
+	if !hasEnvKey(env, envRuntimeHome) {
+		env = append(env, envRuntimeHome+"="+homeDir)
+	}
+	if !hasEnvKey(env, envRuntimeAgentWork) {
+		env = append(env, envRuntimeAgentWork+"="+runtimeAgentWorkspace)
 	}
 	if !hasEnvKey(env, envHome) {
 		env = append(env, envHome+"="+homeDir)
@@ -120,6 +145,7 @@ func runtimeWorkspaceLayoutDirs(workspace string) []string {
 		workspace,
 		filepath.Join(workspace, openclawStateDirName),
 		filepath.Join(workspace, openclawStateDirName, openclawWorkspaceDir),
+		filepath.Join(workspace, openclawWorkspaceDir),
 		filepath.Join(workspace, sandboxHomeDirName),
 		filepath.Join(workspace, sandboxTmpDirName),
 		filepath.Join(workspace, sandboxXDGDirName, "config"),
@@ -140,11 +166,30 @@ func ensureRuntimeWorkspaceDirs(dirs []string) error {
 	return nil
 }
 
-func checkpointRuntimeWorkspace(workspace string) (string, error) {
+func normalizeWorkspaceCheckpointName(checkpointName string) string {
+	if strings.TrimSpace(checkpointName) == "" {
+		return "workspace"
+	}
+	return checkpointName
+}
+
+func checkpointRuntimeWorkspace(workspace, checkpointName string) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return "", fmt.Errorf("runtime workspace is empty")
 	}
-	return utils.CompressDirectory(workspace)
+	archive, err := utils.CompressDirectory(workspace)
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(runtimeWorkspaceCheckpoint{
+		Format:  runtimeWorkspaceCheckpointFormatV1,
+		Name:    normalizeWorkspaceCheckpointName(checkpointName),
+		Archive: archive,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal runtime workspace checkpoint failed: %w", err)
+	}
+	return string(payload), nil
 }
 
 func normalizeRuntimeWorkspacePath(workspace string) (string, error) {
@@ -158,13 +203,41 @@ func normalizeRuntimeWorkspacePath(workspace string) (string, error) {
 	return cleanedWorkspace, nil
 }
 
-func stageRuntimeWorkspaceRestore(workspace, snapshot string) (string, func(), error) {
+func decodeRuntimeWorkspaceSnapshot(snapshot, checkpointName string) (string, error) {
+	if strings.TrimSpace(snapshot) == "" {
+		return "", fmt.Errorf("runtime workspace snapshot is empty")
+	}
+
+	var payload runtimeWorkspaceCheckpoint
+	if err := json.Unmarshal([]byte(snapshot), &payload); err != nil || payload.Format == "" {
+		return snapshot, nil
+	}
+	if payload.Format != runtimeWorkspaceCheckpointFormatV1 {
+		return "", fmt.Errorf("unsupported runtime workspace checkpoint format: %s", payload.Format)
+	}
+	expectedName := normalizeWorkspaceCheckpointName(checkpointName)
+	if payload.Name != expectedName {
+		return "", fmt.Errorf("runtime workspace checkpoint name mismatch: got %s want %s", payload.Name, expectedName)
+	}
+	if strings.TrimSpace(payload.Archive) == "" {
+		return "", fmt.Errorf("runtime workspace checkpoint archive is empty")
+	}
+	return payload.Archive, nil
+}
+
+// CheckpointRuntimeWorkspace creates a named workspace snapshot payload.
+func CheckpointRuntimeWorkspace(workspace, checkpointName string) (string, error) {
+	return checkpointRuntimeWorkspace(workspace, checkpointName)
+}
+
+func stageRuntimeWorkspaceRestore(workspace, checkpointName, snapshot string) (string, func(), error) {
 	cleanedWorkspace, err := normalizeRuntimeWorkspacePath(workspace)
 	if err != nil {
 		return "", nil, err
 	}
-	if strings.TrimSpace(snapshot) == "" {
-		return "", nil, fmt.Errorf("runtime workspace snapshot is empty")
+	archive, err := decodeRuntimeWorkspaceSnapshot(snapshot, checkpointName)
+	if err != nil {
+		return "", nil, err
 	}
 
 	parentDir := filepath.Dir(cleanedWorkspace)
@@ -177,7 +250,7 @@ func stageRuntimeWorkspaceRestore(workspace, snapshot string) (string, func(), e
 		_ = os.RemoveAll(stagedWorkspace)
 	}
 
-	if err := utils.DecompressToDirectory(snapshot, stagedWorkspace); err != nil {
+	if err := utils.DecompressToDirectory(archive, stagedWorkspace); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("restore staged runtime workspace %s failed: %w", stagedWorkspace, err)
 	}
@@ -190,12 +263,12 @@ func stageRuntimeWorkspaceRestore(workspace, snapshot string) (string, func(), e
 
 // StageRuntimeWorkspaceRestore validates and unpacks a workspace snapshot into a temporary sibling directory.
 // The caller owns the returned cleanup function and should remove the staged directory if it is not promoted.
-func StageRuntimeWorkspaceRestore(workspace, snapshot string) (string, func(), error) {
-	return stageRuntimeWorkspaceRestore(workspace, snapshot)
+func StageRuntimeWorkspaceRestore(workspace, checkpointName, snapshot string) (string, func(), error) {
+	return stageRuntimeWorkspaceRestore(workspace, checkpointName, snapshot)
 }
 
-func restoreRuntimeWorkspace(workspace, snapshot string) error {
-	stagedWorkspace, cleanup, err := stageRuntimeWorkspaceRestore(workspace, snapshot)
+func restoreRuntimeWorkspace(workspace, checkpointName, snapshot string) error {
+	stagedWorkspace, cleanup, err := stageRuntimeWorkspaceRestore(workspace, checkpointName, snapshot)
 	if err != nil {
 		return err
 	}

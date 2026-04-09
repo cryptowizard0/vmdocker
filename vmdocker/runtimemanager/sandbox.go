@@ -96,20 +96,26 @@ func (sm *SandboxManager) CreateInstance(ctx context.Context, pid string, runtim
 	}
 	log.Debug("sandbox create command completed", "pid", pid, "sandbox_name", sandboxName, "elapsed", time.Since(sandboxCreateStart))
 
+	launchRuntimeSpec := runtimeSpec
+	launchRuntimeSpec.Sandbox.Workspace = runtimeWorkspaceRootFromPath(workspace)
+	launchRuntimeEnv := append([]string(nil), runtimeEnv...)
+
 	instance := &schema.InstanceInfo{
-		ID:        sandboxName,
-		Name:      pid,
-		Port:      port,
-		Status:    "created",
-		CreateAt:  time.Now(),
-		Backend:   schema.RuntimeBackendSandbox,
-		Agent:     agent,
-		Workspace: workspace,
+		ID:          sandboxName,
+		Name:        pid,
+		Port:        port,
+		Status:      "created",
+		CreateAt:    time.Now(),
+		Backend:     schema.RuntimeBackendSandbox,
+		Agent:       agent,
+		Workspace:   workspace,
+		RuntimeSpec: launchRuntimeSpec,
+		RuntimeEnv:  launchRuntimeEnv,
 	}
 	sm.instances[pid] = instance
 	sm.launchSpecs[pid] = sandboxLaunchSpec{
 		runtimeSpec: runtimeSpec,
-		runtimeEnv:  append([]string(nil), runtimeEnv...),
+		runtimeEnv:  launchRuntimeEnv,
 		workspace:   workspace,
 	}
 	log.Info("sandbox runtime instance created", "pid", pid, "sandbox_name", sandboxName, "port", port)
@@ -237,7 +243,7 @@ func (sm *SandboxManager) Checkpoint(_ context.Context, pid, checkpointName stri
 		return "", err
 	}
 	log.Info("checkpointing sandbox runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
-	return checkpointRuntimeWorkspace(instance.Workspace)
+	return checkpointRuntimeWorkspace(instance.Workspace, checkpointName)
 }
 
 func (sm *SandboxManager) Restore(_ context.Context, pid, checkpointName, snapshot string) error {
@@ -246,7 +252,7 @@ func (sm *SandboxManager) Restore(_ context.Context, pid, checkpointName, snapsh
 		return err
 	}
 	log.Info("restoring sandbox runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
-	return restoreRuntimeWorkspace(instance.Workspace, snapshot)
+	return restoreRuntimeWorkspace(instance.Workspace, checkpointName, snapshot)
 }
 
 func (sm *SandboxManager) ensureSandboxCLI(ctx context.Context) error {

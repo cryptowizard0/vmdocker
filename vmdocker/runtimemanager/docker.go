@@ -130,6 +130,10 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 		return nil, err
 	}
 
+	launchRuntimeEnv := append([]string(nil), runtimeEnv...)
+	launchRuntimeSpec := runtimeSpec
+	launchRuntimeSpec.Sandbox.Workspace = runtimeWorkspaceRootFromPath(workspace)
+
 	runtimeEnv = appendRuntimePersistenceEnv(runtimeEnv, workspace)
 
 	hostConfig := buildDockerHostConfig(port, workspace)
@@ -154,13 +158,15 @@ func (dm *DockerManager) CreateInstance(ctx context.Context, pid string, runtime
 	log.Info("docker runtime instance created", "pid", pid, "container_id", resp.ID, "port", port)
 
 	instanceInfo := &schema.InstanceInfo{
-		ID:        resp.ID,
-		Name:      pid,
-		Port:      port,
-		Status:    "created",
-		CreateAt:  time.Now(),
-		Backend:   schema.RuntimeBackendDocker,
-		Workspace: workspace,
+		ID:          resp.ID,
+		Name:        pid,
+		Port:        port,
+		Status:      "created",
+		CreateAt:    time.Now(),
+		Backend:     schema.RuntimeBackendDocker,
+		Workspace:   workspace,
+		RuntimeSpec: launchRuntimeSpec,
+		RuntimeEnv:  launchRuntimeEnv,
 	}
 	dm.instances[pid] = instanceInfo
 	return instanceInfo, nil
@@ -311,7 +317,7 @@ func (dm *DockerManager) Checkpoint(_ context.Context, pid, checkpointName strin
 		return "", err
 	}
 	log.Info("checkpointing docker runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
-	return checkpointRuntimeWorkspace(instance.Workspace)
+	return checkpointRuntimeWorkspace(instance.Workspace, checkpointName)
 }
 
 func (dm *DockerManager) Restore(_ context.Context, pid, checkpointName, snapshot string) error {
@@ -320,5 +326,5 @@ func (dm *DockerManager) Restore(_ context.Context, pid, checkpointName, snapsho
 		return err
 	}
 	log.Info("restoring docker runtime workspace", "pid", pid, "checkpoint_name", checkpointName, "workspace", instance.Workspace)
-	return restoreRuntimeWorkspace(instance.Workspace, snapshot)
+	return restoreRuntimeWorkspace(instance.Workspace, checkpointName, snapshot)
 }

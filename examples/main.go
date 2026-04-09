@@ -46,7 +46,7 @@ func initExampleSDK() {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("please input cmd, ex: pingpong, sendMessage, spawn, eval, eval2, receive, receive2, reply, inbox, result, checkpoint, ollama, recover1, recover2, openclaw_spawn, openclaw_chat, openclaw_tg, openclaw_pair")
+		fmt.Println("please input cmd, ex: pingpong, sendMessage, spawn, eval, eval2, receive, receive2, reply, inbox, result, checkpoint, ollama, recover1, recover2, openclaw_spawn, openclaw_chat, openclaw_tg, openclaw_pair, claude_spawn, claude_chat")
 		os.Exit(1)
 	}
 
@@ -124,6 +124,23 @@ func main() {
 		id := os.Args[2]
 		code := os.Args[3]
 		pairTgOpenclaw(id, code)
+	case "claude_spawn":
+		spawnClaude()
+	case "claude_chat":
+		target, command, shouldSpawn, err := resolveClaudeChatArgs(os.Args[2:])
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		if shouldSpawn {
+			target = spawnClaude()
+			if target != "" {
+				time.Sleep(1 * time.Second)
+			}
+		}
+		if target != "" {
+			chatClaude(target, command)
+		}
 	default:
 		fmt.Printf("unknown cmd: %s\n", cmd)
 		os.Exit(1)
