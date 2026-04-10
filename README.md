@@ -334,6 +334,10 @@ This means both backends are intended to write runtime state only inside the map
 
 #### **End-To-End Workflow**
 
+Claude-specific developer guide:
+
+- [Claude Runtime In VMDocker](/Users/webbergao/work/src/HymxWorkspace/vmdocker/docs/claude-runtime.md)
+
 Follow these steps to create, validate, and run a sandbox module end to end.
 
 **Step 1: Prepare The Final Image**
