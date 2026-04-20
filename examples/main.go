@@ -124,6 +124,8 @@ func main() {
 		id := os.Args[2]
 		code := os.Args[3]
 		pairTgOpenclaw(id, code)
+	case "claude_tg_spawn":
+		spawnClaudeTg()
 	case "claude_spawn":
 		spawnClaude()
 	case "claude_chat":
